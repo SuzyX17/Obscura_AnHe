@@ -31,12 +31,20 @@ header{position:sticky;top:0;z-index:20;background:rgba(23,22,26,.9);backdrop-fi
 .icon-btn{padding:6px 10px;border-radius:9px;color:var(--ink-dim);font-size:13px;border:1px solid transparent}
 .icon-btn:active{background:var(--surface2)}
 .icon-btn.on{color:var(--brass);border-color:var(--brass);background:var(--brass-dim)}
+.icon-btn.nudge{position:relative}
+.icon-btn.nudge::after{content:"";position:absolute;top:4px;right:5px;width:6px;height:6px;border-radius:50%;background:var(--brass)}
 
 /* search + filter row */
 .tool-row{display:flex;gap:8px;margin-top:10px}
 .tool-row input{flex:1;padding:7px 12px;border-radius:20px;font-size:14px}
 .filter-btn{white-space:nowrap;padding:7px 13px;border:1px solid var(--line);border-radius:20px;font-size:14px;color:var(--ink-dim)}
 .filter-btn.active{color:var(--brass);border-color:var(--brass);background:var(--brass-dim)}
+
+/* search suggestions */
+.search-sug{display:none;flex-wrap:wrap;gap:6px;margin-top:8px}
+.search-sug.show{display:flex}
+.s-chip{font-size:12px;padding:4px 10px;border-radius:14px;background:var(--surface2);color:var(--ink-dim);border:1px solid var(--line)}
+.s-chip b{font-weight:400;font-size:10.5px;color:var(--brass);margin-right:4px;letter-spacing:.06em}
 
 /* active filter chips */
 .active-chips{display:flex;gap:6px;overflow-x:auto;margin-top:8px;padding-bottom:2px;scrollbar-width:none}
@@ -115,6 +123,7 @@ main{padding:12px 12px calc(96px + var(--safe-b))}
 .o-chip.link b{color:var(--brass)}
 .o-chip i{font-style:normal;color:var(--ink-faint);cursor:pointer;padding:0 2px}
 .o-chip i:active{color:var(--danger)}
+.o-chip.ask{border-style:dashed;color:var(--ink-dim)}
 .src-row{display:flex;gap:8px;margin-bottom:4px}
 .src-row input{flex:1;min-width:0;font-size:13px}
 .src-btn{white-space:nowrap;font-size:13px;color:var(--brass);border:1px solid var(--line);border-radius:10px;padding:0 12px}
@@ -180,17 +189,18 @@ main{padding:12px 12px calc(96px + var(--safe-b))}
 
 <header>
   <div class="head-row">
-    <div class="wordmark">暗 盒<small>OBSCURA · v0.12</small></div>
+    <div class="wordmark">暗 盒<small>OBSCURA · v0.14</small></div>
     <div class="head-actions">
       <button class="icon-btn" id="btnUndev" onclick="toggleUndev()">待显影 <span id="undevCount"></span></button>
       <button class="icon-btn" onclick="openCollections()">灵感集</button>
-      <button class="icon-btn" onclick="openBackup()">⋯</button>
+      <button class="icon-btn" id="btnBackup" onclick="openBackup()">⋯</button>
     </div>
   </div>
   <div class="tool-row">
-    <input id="searchInput" type="search" placeholder="搜索收藏理由或标签" oninput="renderGrid()">
+    <input id="searchInput" type="search" placeholder="搜索" oninput="renderGrid();renderSearchSug()" onfocus="renderSearchSug()" onblur="setTimeout(hideSearchSug,150)">
     <button class="filter-btn" id="filterBtn" onclick="openFilter()">标签</button>
   </div>
+  <div class="search-sug" id="searchSug"></div>
   <div class="active-chips" id="activeChips"></div>
 </header>
 
@@ -279,6 +289,11 @@ const TAG_MOVE = [ // [旧维度, 词, 新维度]
 const TAG_RENAME = {"吸引点":{"姿势参考":"姿势","拍摄场地":"场景","场地":"场景","服装造型":"妆造","造型":"妆造","后期风格":"后期","光线方案":"光影"}};
 let db, photos = [], colls = [], urlCache = new Map();
 let vocab = JSON.parse(localStorage.getItem("anhe_vocab") || "null") || structuredClone(DEFAULT_VOCAB);
+// 作者身份记忆:{作者名: "摄影师"|"模特"},同名作者下次自动带上
+let roleMap = JSON.parse(localStorage.getItem("anhe_roles") || "{}");
+const saveRoles = () => localStorage.setItem("anhe_roles", JSON.stringify(roleMap));
+// 上次备份的时间与当时张数,用于事实性提醒(非评判、可无视)
+let lastBackup = JSON.parse(localStorage.getItem("anhe_lastBackup") || "null");
 
 function saveVocab(){ localStorage.setItem("anhe_vocab", JSON.stringify(vocab)); }
 function learnTag(dim, tag){
@@ -347,6 +362,10 @@ async function migrateAll(){
   for(const c of colls) if(!c.kind){ c.kind = "策划"; await putColl(c); }
   // 把照片上的标签并入词库
   photos.forEach(p => DIMS.forEach(d => (p.tags[d]||[]).forEach(t => learnTag(d,t))));
+  // 把照片上已有的作者身份并入记忆表
+  let rolesChanged = false;
+  photos.forEach(p => { const o = p.origin; if(o?.author && o?.role && !roleMap[o.author]){ roleMap[o.author] = o.role; rolesChanged = true; } });
+  if(rolesChanged) saveRoles();
 }
 const putPhoto = p => tx("photos","readwrite", s => s.put(p));
 const delPhoto = id => tx("photos","readwrite", s => s.delete(id));
@@ -406,11 +425,13 @@ async function detectOrigin(id){
     cur.origin = cur.origin || {author:"",platform:"",link:""};
     if(got.platform && !cur.origin.platform) cur.origin.platform = got.platform;
     if(got.author && !cur.origin.author) cur.origin.author = got.author;
+    if(cur.origin.author && !cur.origin.role && roleMap[cur.origin.author]) cur.origin.role = roleMap[cur.origin.author];
     delete cur.detecting;
     await putPhoto(cur);
     if(editing && editing.id === id){                 // 若正停在这张的显影卡,回填输入
       if(got.platform && !editing.origin.platform) editing.origin.platform = got.platform;
       if(got.author && !editing.origin.author) editing.origin.author = got.author;
+      if(editing.origin.author && !editing.origin.role && roleMap[editing.origin.author]) editing.origin.role = roleMap[editing.origin.author];
       const box = document.getElementById("originChips"); if(box) box.innerHTML = originChips();
       const lbl = document.querySelector("#detailBody .detecting"); if(lbl) lbl.remove();
     }
@@ -460,14 +481,14 @@ function visiblePhotos(){
   const q = document.getElementById("searchInput").value.trim().toLowerCase();
   return photos.filter(p => {
     if(contextColl && !(p.colls||[]).includes(contextColl)) return false;
-    if(authorFilter && (p.origin?.author||p.origin?.platform) !== authorFilter) return false;
+    if(authorFilter && p.origin?.author !== authorFilter && p.origin?.platform !== authorFilter) return false;
     if(undevOnly && p.dev) return false;
     for(const d in filters)
       for(const t of filters[d])
         if(!(p.tags[d]||[]).includes(t)) return false;
     if(q){
       const o = p.origin || {};
-      const hay = (p.note + " " + (o.author||"") + " " + (o.platform||"") + " " + (o.link||"") + " " + (p.place||"") + " " + DIMS.map(d => (p.tags[d]||[]).join(" ")).join(" ")).toLowerCase();
+      const hay = (p.note + " " + (o.author||"") + " " + (o.role||"") + " " + (o.platform||"") + " " + (o.link||"") + " " + (p.place||"") + " " + DIMS.map(d => (p.tags[d]||[]).join(" ")).join(" ")).toLowerCase();
       if(!hay.includes(q)) return false;
     }
     return true;
@@ -526,6 +547,28 @@ function renderActiveChips(){
 function updateUndevCount(){
   const n = photos.filter(p=>!p.dev).length;
   document.getElementById("undevCount").textContent = n ? n : "";
+  refreshBackupNudge();
+}
+// 事实性备份状态:{nudge, line}。语气克制,不催促
+function backupStatus(){
+  const n = photos.length;
+  if(!n) return { nudge:false, line:"" };
+  if(!lastBackup) return { nudge: n >= 3, line:`还没备份过 · ${n} 张在库` };
+  const added = Math.max(0, n - lastBackup.count);
+  const days = Math.floor((Date.now() - lastBackup.at) / 86400000);
+  const nudge = added >= 10 || (days >= 14 && added >= 1);
+  const when = days <= 0 ? "今天" : days === 1 ? "昨天" : `${days} 天前`;
+  const line = `上次备份 ${when}` + (added ? ` · 新增 ${added} 张` : " · 无新增");
+  return { nudge, line };
+}
+function refreshBackupNudge(){
+  const b = document.getElementById("btnBackup");
+  if(b) b.classList.toggle("nudge", backupStatus().nudge);
+}
+function recordBackup(){
+  lastBackup = { at: Date.now(), count: photos.length };
+  localStorage.setItem("anhe_lastBackup", JSON.stringify(lastBackup));
+  refreshBackupNudge();
 }
 function toggleUndev(){ undevOnly = !undevOnly; renderGrid(); }
 function jumpTag(d, t){
@@ -538,6 +581,28 @@ function removeFilter(d,t){ filters[d]?.delete(t); if(filters[d] && !filters[d].
 function clearFilters(){ filters = {}; undevOnly = false; authorFilter = null; renderGrid(); renderFilterBody(); }
 function jumpAuthor(a){ if(!a) return; authorFilter = a; renderGrid(); window.scrollTo({top:0}); }
 function clearAuthor(){ authorFilter = null; renderGrid(); }
+
+/* 搜索联想:聚焦搜索框时,把吸引点标签、作者、平台做成可点的 chip */
+function renderSearchSug(){
+  const box = document.getElementById("searchSug");
+  const q = document.getElementById("searchInput").value.trim().toLowerCase();
+  const authors = [...new Set(photos.map(p => p.origin?.author).filter(Boolean))];
+  const plats   = [...new Set(photos.map(p => p.origin?.platform).filter(Boolean))];
+  const cnt = {};
+  photos.forEach(p => (p.tags["吸引点"]||[]).forEach(t => cnt[t] = (cnt[t]||0) + 1));
+  const tags = Object.keys(cnt).sort((a,b) => cnt[b] - cnt[a]);
+  const hit = v => !q || v.toLowerCase().includes(q);
+  const chips = [
+    ...tags.filter(hit).map(t => `<button class="s-chip" onpointerdown="event.preventDefault();sugTag('吸引点','${esc(t)}')">${esc(t)}</button>`),
+    ...authors.filter(hit).map(a => `<button class="s-chip" onpointerdown="event.preventDefault();sugAuthor('${esc(a)}')"><b>${esc(roleMap[a] || "作者")}</b>${esc(a)}</button>`),
+    ...plats.filter(hit).map(p => `<button class="s-chip" onpointerdown="event.preventDefault();sugAuthor('${esc(p)}')"><b>平台</b>${esc(p)}</button>`)
+  ];
+  box.innerHTML = chips.join("");
+  box.classList.toggle("show", chips.length > 0);
+}
+function hideSearchSug(){ document.getElementById("searchSug").classList.remove("show"); }
+function sugTag(d, t){ jumpTag(d, t); hideSearchSug(); document.getElementById("searchInput").blur(); }
+function sugAuthor(a){ jumpAuthor(a); hideSearchSug(); document.getElementById("searchInput").blur(); }
 
 /* ================= 筛选 sheet ================= */
 function openFilter(){ renderFilterBody(); showSheet("filterSheet"); }
@@ -650,7 +715,7 @@ let editing = null, reviewQueue = null, reviewIdx = 0;
 function openDetail(id, review = false){
   const p = photos.find(x => x.id === id); if(!p) return;
   editing = { id, note: p.note, place: p.place||"",
-    origin: { author: p.origin?.author || p.artist || "", platform: p.origin?.platform || "", link: p.origin?.link || p.source || "" },
+    origin: { author: p.origin?.author || p.artist || "", platform: p.origin?.platform || "", link: p.origin?.link || p.source || "", role: p.origin?.role || "" },
     tags: structuredClone(p.tags), colls: [...(p.colls||[])] };
   if(!review) reviewQueue = null;
   document.getElementById("detailTitle").innerHTML = review
@@ -710,18 +775,52 @@ function classifyOrigin(raw){
   if(KNOWN_PLATFORMS.some(p => low === p || low.includes(p))) return "platform";
   return "author";
 }
+// 链接域名 → 平台名,粘贴链接时自动填平台
+const LINK_PLATFORMS = [
+  [/xiaohongshu|xhslink/i,"小红书"], [/weibo/i,"微博"], [/instagram/i,"Instagram"],
+  [/pinterest|pin\.it/i,"Pinterest"], [/behance/i,"Behance"], [/500px/i,"500px"],
+  [/tuchong/i,"图虫"], [/bilibili|b23\.tv/i,"B站"], [/douyin/i,"抖音"],
+  [/unsplash/i,"Unsplash"], [/flickr/i,"Flickr"], [/tumblr/i,"Tumblr"], [/vsco/i,"VSCO"],
+  [/zcool/i,"站酷"], [/lofter/i,"LOFTER"], [/twitter\.com|\/\/x\.com|www\.x\.com/i,"X"]
+];
+function platformFromLink(u){ const hit = LINK_PLATFORMS.find(([re]) => re.test(u)); return hit ? hit[1] : ""; }
 function commitOrigin(raw){
   const t = raw.trim(); if(!t) return;
   const kind = classifyOrigin(t);
-  if(kind === "link") editing.origin.link = normUrl(t);
+  if(kind === "link"){
+    editing.origin.link = normUrl(t);
+    if(!editing.origin.platform){ const pl = platformFromLink(editing.origin.link); if(pl) editing.origin.platform = pl; }
+  }
   else if(kind === "platform") editing.origin.platform = t;
-  else editing.origin.author = t;
+  else { editing.origin.author = t; editing.origin.role = roleMap[t] || editing.origin.role || ""; }
   document.getElementById("originChips").innerHTML = originChips();
 }
-function clearOrigin(k){ editing.origin[k] = ""; document.getElementById("originChips").innerHTML = originChips(); }
+function clearOrigin(k){
+  editing.origin[k] = "";
+  if(k === "author") editing.origin.role = "";
+  document.getElementById("originChips").innerHTML = originChips();
+}
+function setRole(r){
+  if(!editing.origin.author) return;
+  editing.origin.role = r;
+  roleMap[editing.origin.author] = r; saveRoles();
+  document.getElementById("originChips").innerHTML = originChips();
+}
+function cycleRole(){
+  const order = ["摄影师","模特",""];
+  const cur = editing.origin.role || "";
+  const next = order[(order.indexOf(cur) + 1) % order.length];
+  editing.origin.role = next;
+  const a = editing.origin.author;
+  if(a){ if(next) roleMap[a] = next; else delete roleMap[a]; saveRoles(); }
+  document.getElementById("originChips").innerHTML = originChips();
+}
 function originChips(){
   const o = editing.origin, out = [];
-  if(o.author)   out.push(`<span class="o-chip"><b>作者</b>${esc(o.author)}<i onclick="clearOrigin('author')">×</i></span>`);
+  if(o.author){
+    out.push(`<span class="o-chip"><b onclick="cycleRole()">${esc(o.role || "作者")}</b>${esc(o.author)}<i onclick="clearOrigin('author')">×</i></span>`);
+    if(!o.role) out.push(`<button class="o-chip ask" onclick="setRole('摄影师')">摄影师?</button><button class="o-chip ask" onclick="setRole('模特')">模特?</button>`);
+  }
   if(o.platform) out.push(`<span class="o-chip"><b>平台</b>${esc(o.platform)}<i onclick="clearOrigin('platform')">×</i></span>`);
   if(o.link)     out.push(`<a class="o-chip link" href="${esc(o.link)}" target="_blank" rel="noopener"><b>链接</b>打开 ↗<i onclick="event.preventDefault();clearOrigin('link')">×</i></a>`);
   return out.join("");
@@ -807,7 +906,8 @@ async function saveDetail(close){
     p.note = editing.note.trim();
     const oi = document.getElementById("originInput");
     if(oi && oi.value.trim()){ commitOrigin(oi.value); oi.value = ""; }
-    p.origin = { author: editing.origin.author.trim(), platform: editing.origin.platform.trim(), link: editing.origin.link.trim() };
+    const auth = editing.origin.author.trim();
+    p.origin = { author: auth, platform: editing.origin.platform.trim(), link: editing.origin.link.trim(), role: auth ? (editing.origin.role || "") : "" };
     delete p.source; delete p.artist;
     p.place = editing.place.trim();
     p.tags = editing.tags;
@@ -954,17 +1054,21 @@ function exitCollection(){
 
 /* ================= 备份 ================= */
 function openBackup(){
+  const st = backupStatus();
+  const statusLine = st.line
+    ? `<p style="font-size:12px;color:${st.nudge ? "var(--brass)" : "var(--ink-faint)"};margin:-6px 0 14px">${st.line}</p>` : "";
   document.getElementById("backupBody").innerHTML = `
-    <p style="font-size:13px;color:var(--ink-dim);margin-bottom:14px">全部数据只存在这台设备的浏览器里。换设备或怕丢,先导出一份。</p>
+    <p style="font-size:13px;color:var(--ink-dim);margin-bottom:14px">全部数据只存在这台设备的浏览器里,不会自动跨设备同步。备份一份到 iCloud/文件,换设备时导入即可。</p>
     <div class="review-nav" style="margin-top:0">
-      <button class="primary" onclick="exportZip()">导出图库 (ZIP)</button>
+      <button class="primary" onclick="exportAll()">备份到 iCloud / 文件 (JSON)</button>
     </div>
-    <p style="font-size:12px;color:var(--ink-faint);margin:8px 0 14px">图片 + 可直接打开的清单(HTML/CSV),给任何人、任何设备</p>
+    <p style="font-size:12px;color:var(--ink-faint);margin:8px 0 4px">点击后选「存储到文件」→ iCloud;换设备用下面的「导入」恢复,完整还原</p>
+    ${statusLine}
     <div class="review-nav" style="margin-top:0">
-      <button onclick="exportAll()">导出备份 (JSON)</button>
       <button onclick="document.getElementById('restoreInput').click()">导入备份</button>
+      <button onclick="exportZip()">导出图库 (ZIP)</button>
     </div>
-    <p style="font-size:12px;color:var(--ink-faint);margin:8px 0 0">JSON 用于迁移回暗盒,可完整恢复</p>
+    <p style="font-size:12px;color:var(--ink-faint);margin:8px 0 0">ZIP:图片 + 可直接打开的清单(HTML/CSV),给任何人看,不用于恢复</p>
     <p style="font-size:12px;color:var(--ink-faint);margin-top:14px">共 ${photos.length} 张图 · ${colls.length} 个灵感集</p>`;
   showSheet("backupSheet");
 }
@@ -1025,7 +1129,7 @@ async function exportZip(){
     const list = photos.slice().sort((a,b) => a.createdAt - b.createdAt);
     const enc = new TextEncoder();
     const entries = [], rows = [], cards = [];
-    rows.push(["文件名","收入日期","被什么打动",...DIMS,"作者","平台","链接","地点","灵感集"]);
+    rows.push(["文件名","收入日期","被什么打动",...DIMS,"作者","身份","平台","链接","地点","灵感集"]);
     let i = 0;
     for(const p of list){
       i++;
@@ -1037,7 +1141,7 @@ async function exportZip(){
       const collNames = (p.colls||[]).map(id => (colls.find(c => c.id === id)||{}).name).filter(Boolean);
       const date = new Date(p.createdAt).toLocaleDateString("zh-CN");
       rows.push([fname, date, p.note||"", ...DIMS.map(d => (p.tags[d]||[]).join(" ")),
-        o.author||"", o.platform||"", o.link||"", p.place||"", collNames.join(" ")]);
+        o.author||"", o.role||"", o.platform||"", o.link||"", p.place||"", collNames.join(" ")]);
       const tagLine = DIMS.flatMap(d => p.tags[d]||[]).map(esc).join(" · ");
       const srcLine = [o.author, o.platform].filter(Boolean).map(esc).join(" · ");
       cards.push(`<figure><img src="${fname}" loading="lazy"><figcaption>
@@ -1070,18 +1174,33 @@ img{width:100%;display:block}figcaption{padding:9px 11px 11px;font-size:12.5px;l
   }catch(err){ console.error(err); toast("打包失败:" + (err.message||err)); }
 }
 async function exportAll(){
+  if(!photos.length) return toast("暗盒还是空的");
   toast("正在打包…");
-  const out = { v:1, colls, vocab, photos: [] };
+  const out = { v:1, colls, vocab, roles: roleMap, photos: [] };
   for(const p of photos){
     const rec = {...p, blob: await blobToB64(p.blob)};
     if(p.orig) rec.orig = await blobToB64(p.orig);
     out.photos.push(rec);
   }
+  const fname = `anhe-backup-${new Date().toISOString().slice(0,10)}.json`;
+  const file = new File([JSON.stringify(out)], fname, {type:"application/json"});
+  // 优先系统"存储到文件"面板(iOS 可直接落到 iCloud Drive),不支持则下载
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file]}); }
+    catch(err){ if(err && err.name === "AbortError") return; downloadFile(file, fname); }
+  } else {
+    downloadFile(file, fname);
+  }
+  recordBackup();
+  toast(`已备份 ${photos.length} 张`);
+  if(document.getElementById("backupSheet").classList.contains("show")) openBackup();
+}
+function downloadFile(file, fname){
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(out)], {type:"application/json"}));
-  a.download = `anhe-backup-${new Date().toISOString().slice(0,10)}.json`;
+  a.href = URL.createObjectURL(file);
+  a.download = fname;
   a.click();
-  toast("已导出");
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 document.getElementById("restoreInput").onchange = async e => {
   const f = e.target.files[0]; e.target.value = "";
@@ -1090,6 +1209,7 @@ document.getElementById("restoreInput").onchange = async e => {
     const data = JSON.parse(await f.text());
     for(const c of (data.colls||[])) if(!colls.find(x=>x.id===c.id)){ colls.push(c); await putColl(c); }
     if(data.vocab){ for(const d of DIMS) vocab[d] = [...new Set([...(vocab[d]||[]), ...(data.vocab[d]||[])])]; saveVocab(); }
+    if(data.roles){ roleMap = {...data.roles, ...roleMap}; saveRoles(); }
     let n = 0;
     for(const rp of (data.photos||[])){
       if(photos.find(x => x.id === rp.id)) continue;
