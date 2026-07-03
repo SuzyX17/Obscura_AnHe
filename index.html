@@ -61,6 +61,12 @@ header{position:sticky;top:0;z-index:20;background:rgba(23,22,26,.9);backdrop-fi
 
 /* ---------- grid ---------- */
 main{padding:12px 12px calc(96px + var(--safe-b))}
+.set-bar{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 12px;scrollbar-width:none}
+.set-bar::-webkit-scrollbar{display:none}
+.set-bar:empty{display:none}
+.f-chip{white-space:nowrap;display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:17px;border:1px solid var(--line);font-size:13.5px;color:var(--ink-dim);background:var(--surface)}
+.f-chip em{font-style:normal;font-size:11px;color:var(--ink-faint)}
+.f-chip.add{border-style:dashed;color:var(--ink-faint)}
 .grid{column-count:2;column-gap:10px}
 .card{break-inside:avoid;margin-bottom:10px;background:var(--surface);border-radius:var(--radius);overflow:hidden;border:1px solid var(--line)}
 .card img{width:100%;display:block;background:var(--surface2)}
@@ -190,7 +196,7 @@ main{padding:12px 12px calc(96px + var(--safe-b))}
 
 <header>
   <div class="head-row">
-    <div class="wordmark">暗 盒<small>OBSCURA · v0.15</small></div>
+    <div class="wordmark">暗 盒<small>OBSCURA · v0.16</small></div>
     <div class="head-actions">
       <button class="icon-btn" id="btnUndev" onclick="toggleUndev()">待显影 <span id="undevCount"></span></button>
       <button class="icon-btn" onclick="openCollections()">灵感集</button>
@@ -207,10 +213,10 @@ main{padding:12px 12px calc(96px + var(--safe-b))}
 
 <div class="context-bar" id="contextBar">
   <b id="contextName"></b>
-  <button onclick="exitCollection()">返回全部 ×</button>
+  <span style="display:flex;gap:14px"><button id="ctxEdit" style="display:none" onclick="editContextSet()">编辑</button><button onclick="exitContext()">返回全部 ×</button></span>
 </div>
 
-<main><div class="grid" id="grid"></div><div id="emptyBox"></div></main>
+<main><div class="set-bar" id="setBar"></div><div class="grid" id="grid"></div><div id="emptyBox"></div></main>
 
 <button class="fab" onclick="pickFiles()" aria-label="添加图片">＋</button>
 <input type="file" id="fileInput" accept="image/*" multiple hidden>
@@ -234,6 +240,12 @@ main{padding:12px 12px calc(96px + var(--safe-b))}
 <div class="sheet" id="collSheet">
   <div class="sheet-head"><b>灵感集</b><span><button class="sheet-close" id="collEditBtn" onclick="toggleCollEdit()">编辑</button><button class="sheet-close" onclick="closeAllSheets()">关闭</button></span></div>
   <div class="sheet-body" id="collBody"></div>
+</div>
+
+<!-- 文件夹编辑 sheet -->
+<div class="sheet" id="setSheet">
+  <div class="sheet-head"><b>文件夹</b><button class="sheet-close" onclick="closeAllSheets()">关闭</button></div>
+  <div class="sheet-body" id="setBody"></div>
 </div>
 
 <!-- 备份 sheet -->
@@ -288,7 +300,7 @@ const TAG_MOVE = [ // [旧维度, 词, 新维度]
   ["光线","夜景","天时"], ["光线","黄昏","天时"]
 ];
 const TAG_RENAME = {"吸引点":{"姿势参考":"姿势","拍摄场地":"场景","场地":"场景","服装造型":"妆造","造型":"妆造","后期风格":"后期","光线方案":"光影"}};
-let db, photos = [], colls = [], urlCache = new Map();
+let db, photos = [], colls = [], sets = [], urlCache = new Map();
 let vocab = JSON.parse(localStorage.getItem("anhe_vocab") || "null") || structuredClone(DEFAULT_VOCAB);
 // 作者身份记忆:{作者名: "摄影师"|"模特"},同名作者下次自动带上
 let roleMap = JSON.parse(localStorage.getItem("anhe_roles") || "{}");
@@ -304,11 +316,12 @@ function learnTag(dim, tag){
 
 function openDB(){
   return new Promise((res, rej) => {
-    const req = indexedDB.open("anhe", 1);
+    const req = indexedDB.open("anhe", 2);
     req.onupgradeneeded = e => {
       const d = e.target.result;
       if(!d.objectStoreNames.contains("photos")) d.createObjectStore("photos", {keyPath:"id"});
       if(!d.objectStoreNames.contains("colls"))  d.createObjectStore("colls",  {keyPath:"id"});
+      if(!d.objectStoreNames.contains("sets"))   d.createObjectStore("sets",   {keyPath:"id"});
     };
     req.onsuccess = e => res(e.target.result);
     req.onerror = () => rej(req.error);
@@ -337,7 +350,15 @@ async function loadAll(){
       if(c){ out.push(c.value); c.continue(); } else res(out);
     };
   });
+  sets = await new Promise(res => {
+    const out = [];
+    db.transaction("sets").objectStore("sets").openCursor().onsuccess = e => {
+      const c = e.target.result;
+      if(c){ out.push(c.value); c.continue(); } else res(out);
+    };
+  });
   photos.sort((a,b) => b.createdAt - a.createdAt);
+  sets.sort((a,b) => (a.createdAt||0) - (b.createdAt||0));
 }
 function migrateTags(obj){ // obj = {dim:[tags]},就地迁移,返回是否有改动
   let changed = false;
@@ -361,6 +382,26 @@ async function migrateAll(){
   saveVocab();
   for(const p of photos) if(migrateTags(p.tags)) await putPhoto(p);
   for(const c of colls) if(!c.kind){ c.kind = "策划"; await putColl(c); }
+  // v0.15 曾把层级/统一标签挂在灵感集上,整体迁移为文件夹(照片引用同步转移;上级链一并搬走保持树形)
+  const movedIds = new Set();
+  const markUp = c => { let cur = c, g = 0; while(cur && g++ < 20 && !movedIds.has(cur.id)){ movedIds.add(cur.id); cur = colls.find(x => x.id === cur.parent); } };
+  colls.forEach(c => { if(c.parent || (c.tags && DIMS.some(d => (c.tags[d]||[]).length))) markUp(c); });
+  if(movedIds.size){
+    for(const c of colls.filter(x => movedIds.has(x.id))){
+      const s = { id: c.id, name: c.name, parent: c.parent || null, tags: c.tags || {}, createdAt: Date.now() };
+      sets.push(s); await putSet(s);
+      await tx("colls","readwrite", st => st.delete(c.id));
+    }
+    colls = colls.filter(c => !movedIds.has(c.id));
+    for(const p of photos){
+      const mv = (p.colls||[]).filter(id => movedIds.has(id));
+      if(mv.length){
+        p.sets = [...new Set([...(p.sets||[]), ...mv])];
+        p.colls = p.colls.filter(id => !movedIds.has(id));
+        await putPhoto(p);
+      }
+    }
+  }
   // 把照片上的标签并入词库
   photos.forEach(p => DIMS.forEach(d => (p.tags[d]||[]).forEach(t => learnTag(d,t))));
   // 把照片上已有的作者身份并入记忆表
@@ -371,31 +412,33 @@ async function migrateAll(){
 const putPhoto = p => tx("photos","readwrite", s => s.put(p));
 const delPhoto = id => tx("photos","readwrite", s => s.delete(id));
 const putColl  = c => tx("colls","readwrite", s => s.put(c));
+const putSet   = s => tx("sets","readwrite", st => st.put(s));
+const delSet   = id => tx("sets","readwrite", st => st.delete(id));
 
-/* ---- 灵感集树:parent 字段构成层级,tags 为组级统一标签 ---- */
-function collAncestors(id){        // 自身 + 各级上级
-  const out = []; let c = colls.find(x => x.id === id), guard = 0;
-  while(c && guard++ < 20){ out.push(c); c = colls.find(x => x.id === c.parent); }
+/* ---- 文件夹树(照片集,客观属性):parent 构成层级,tags 为组级统一标签 ---- */
+function setAncestors(id){         // 自身 + 各级上级
+  const out = []; let s = sets.find(x => x.id === id), guard = 0;
+  while(s && guard++ < 20){ out.push(s); s = sets.find(x => x.id === s.parent); }
   return out;
 }
-function collDescendants(id){      // 自身 + 所有后代 id
+function setDescendants(id){       // 自身 + 所有后代 id
   const out = [id];
   for(let i = 0; i < out.length; i++)
-    colls.filter(c => c.parent === out[i]).forEach(c => out.push(c.id));
+    sets.filter(s => s.parent === out[i]).forEach(s => out.push(s.id));
   return out;
 }
-function collPath(id){ return collAncestors(id).reverse().map(c => c.name).join(" / "); }
-function photoCountDeep(id){
-  const ids = new Set(collDescendants(id));
-  return photos.filter(p => (p.colls||[]).some(x => ids.has(x))).length;
+function setPath(id){ return setAncestors(id).reverse().map(s => s.name).join(" / "); }
+function setCountDeep(id){
+  const ids = new Set(setDescendants(id));
+  return photos.filter(p => (p.sets||[]).some(x => ids.has(x))).length;
 }
-// 有效标签 = 照片自身标签 ∪ 所属灵感集(含各级上级)的统一标签
+// 有效标签 = 照片自身标签 ∪ 所属文件夹(含各级上级)的统一标签
 function effTags(p){
   const eff = {}; DIMS.forEach(d => eff[d] = [...(p.tags[d]||[])]);
   const seen = new Set();
-  (p.colls||[]).forEach(id => collAncestors(id).forEach(c => {
-    if(seen.has(c.id)) return; seen.add(c.id);
-    DIMS.forEach(d => (c.tags?.[d]||[]).forEach(t => { if(!eff[d].includes(t)) eff[d].push(t); }));
+  (p.sets||[]).forEach(id => setAncestors(id).forEach(s => {
+    if(seen.has(s.id)) return; seen.add(s.id);
+    DIMS.forEach(d => (s.tags?.[d]||[]).forEach(t => { if(!eff[d].includes(t)) eff[d].push(t); }));
   }));
   return eff;
 }
@@ -416,7 +459,7 @@ document.getElementById("fileInput").onchange = async e => {
   for(const f of files){
     try{
       const full = await compress(f, 1600);            // 完整截图,识别与裁剪都基于它
-      const p = { id: crypto.randomUUID(), blob: full, note:"", origin:{author:"",platform:"",link:""}, place:"", tags:{}, colls:[], dev:false, detecting:true, createdAt: Date.now() };
+      const p = { id: crypto.randomUUID(), blob: full, note:"", origin:{author:"",platform:"",link:""}, place:"", tags:{}, colls: contextColl ? [contextColl] : [], sets: contextSet ? [contextSet] : [], dev:false, detecting:true, createdAt: Date.now() };
       await putPhoto(p);
       photos.unshift(p);
       newIds.push(p.id);
@@ -505,13 +548,18 @@ let filters = {};            // {dim: Set(tags)}
 let authorFilter = null;
 let undevOnly = false;
 let contextColl = null;      // 灵感集视角
+let contextSet = null;       // 文件夹视角
 
 function visiblePhotos(){
   const q = document.getElementById("searchInput").value.trim().toLowerCase();
-  const ctxIds = contextColl ? new Set(collDescendants(contextColl)) : null;
+  const ctxSetIds = contextSet ? new Set(setDescendants(contextSet)) : null;
   const needEff = q || Object.keys(filters).length;
+  // 无任何筛选的根视图 = 浏览态:只展示未入文件夹的散图,文件夹内容从文件夹栏进入
+  const browsing = !q && !Object.keys(filters).length && !undevOnly && !authorFilter && !contextSet && !contextColl;
   return photos.filter(p => {
-    if(ctxIds && !(p.colls||[]).some(id => ctxIds.has(id))) return false;
+    if(browsing && (p.sets||[]).length) return false;
+    if(contextColl && !(p.colls||[]).includes(contextColl)) return false;
+    if(ctxSetIds && !(p.sets||[]).some(id => ctxSetIds.has(id))) return false;
     if(authorFilter && p.origin?.author !== authorFilter && p.origin?.platform !== authorFilter) return false;
     if(undevOnly && p.dev) return false;
     const eff = needEff ? effTags(p) : null;
@@ -520,7 +568,7 @@ function visiblePhotos(){
         if(!(eff[d]||[]).includes(t)) return false;
     if(q){
       const o = p.origin || {};
-      const hay = (p.note + " " + (o.author||"") + " " + (o.role||"") + " " + (o.platform||"") + " " + (o.link||"") + " " + (p.place||"") + " " + DIMS.map(d => (eff[d]||[]).join(" ")).join(" ")).toLowerCase();
+      const hay = (p.note + " " + (o.author||"") + " " + (o.role||"") + " " + (o.platform||"") + " " + (o.link||"") + " " + (p.place||"") + " " + (p.sets||[]).map(id => setPath(id)).join(" ") + " " + DIMS.map(d => (eff[d]||[]).join(" ")).join(" ")).toLowerCase();
       if(!hay.includes(q)) return false;
     }
     return true;
@@ -537,7 +585,62 @@ function originCardLine(p){
     return `<a class="card-src" href="${esc(o.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">原网页 ↗</a>`;
   return "";
 }
+/* ---- 主面板文件夹栏:当前层级的文件夹 chips,点入浏览,＋ 内联新建 ---- */
+function renderSetBar(){
+  const bar = document.getElementById("setBar");
+  const kids = sets.filter(s => (s.parent||null) === (contextSet||null));
+  const chips = [];
+  if(contextSet){
+    const cur = sets.find(s => s.id === contextSet);
+    chips.push(`<button class="f-chip" onclick="enterSet('${cur && cur.parent ? cur.parent : ""}')">‹</button>`);
+  }
+  chips.push(...kids.map(s => `<button class="f-chip" onclick="enterSet('${s.id}')">${esc(s.name)}<em>${setCountDeep(s.id)}</em></button>`));
+  if(photos.length || sets.length) chips.push(`<button class="f-chip add" onclick="addSetInput(this)">＋</button>`);
+  bar.innerHTML = chips.join("");
+}
+function enterSet(id){
+  contextSet = id || null;
+  if(contextSet) contextColl = null;
+  updateContextBar();
+  closeAllSheets();
+  renderGrid();
+  window.scrollTo({top:0});
+}
+function addSetInput(btn){
+  const wrap = document.createElement("span"); wrap.className = "chip-input";
+  wrap.innerHTML = `<input placeholder="新文件夹" enterkeyhint="done">`;
+  btn.replaceWith(wrap);
+  const inp = wrap.querySelector("input"); inp.focus();
+  let done = false;
+  const commit = async () => {
+    if(done) return; done = true;
+    const name = inp.value.trim();
+    if(name){
+      const s = { id: crypto.randomUUID(), name, parent: contextSet || null, createdAt: Date.now() };
+      sets.push(s); await putSet(s);
+    }
+    renderSetBar();
+  };
+  inp.onkeydown = e => { if(e.key === "Enter"){ e.preventDefault(); commit(); } };
+  inp.onblur = commit;
+}
+function updateContextBar(){
+  const bar = document.getElementById("contextBar");
+  const eb = document.getElementById("ctxEdit");
+  if(contextSet){
+    document.getElementById("contextName").textContent = setPath(contextSet);
+    eb.style.display = ""; bar.classList.add("show");
+  } else if(contextColl){
+    const c = colls.find(x => x.id === contextColl);
+    document.getElementById("contextName").textContent = c ? c.name : "";
+    eb.style.display = "none"; bar.classList.add("show");
+  } else bar.classList.remove("show");
+}
+function exitContext(){ contextSet = null; contextColl = null; updateContextBar(); renderGrid(); }
+function editContextSet(){ if(contextSet) openSetEditor(contextSet); }
+
 function renderGrid(){
+  renderSetBar();
   const list = visiblePhotos();
   const grid = document.getElementById("grid");
   grid.innerHTML = list.map(p => {
@@ -561,7 +664,8 @@ function renderGrid(){
       <p>收藏夹里的灵感散落各处。<br>把打动你的画面放进来,<br>写一句它为什么打动你。</p>
       <button onclick="pickFiles()">收入第一张</button></div>`;
   } else if(!list.length){
-    empty.innerHTML = `<div class="empty"><p>没有符合当前筛选的图。<br>换个组合,或清空筛选。</p></div>`;
+    const hasQuery = document.getElementById("searchInput").value.trim() || Object.keys(filters).length || undevOnly || authorFilter;
+    empty.innerHTML = hasQuery ? `<div class="empty"><p>没有符合当前筛选的图。<br>换个组合,或清空筛选。</p></div>` : "";
   } else empty.innerHTML = "";
   renderActiveChips();
 }
@@ -626,6 +730,7 @@ function renderSearchSug(){
   const tags = Object.keys(cnt).sort((a,b) => cnt[b] - cnt[a]);
   const hit = v => !q || v.toLowerCase().includes(q);
   const chips = [
+    ...sets.filter(s => hit(s.name)).map(s => `<button class="s-chip" onpointerdown="event.preventDefault();sugSet('${s.id}')"><b>文件夹</b>${esc(setPath(s.id))}</button>`),
     ...tags.filter(hit).map(t => `<button class="s-chip" onpointerdown="event.preventDefault();sugTag('吸引点','${esc(t)}')">${esc(t)}</button>`),
     ...authors.filter(hit).map(a => `<button class="s-chip" onpointerdown="event.preventDefault();sugAuthor('${esc(a)}')"><b>${esc(roleMap[a] || "作者")}</b>${esc(a)}</button>`),
     ...plats.filter(hit).map(p => `<button class="s-chip" onpointerdown="event.preventDefault();sugAuthor('${esc(p)}')"><b>平台</b>${esc(p)}</button>`)
@@ -636,6 +741,7 @@ function renderSearchSug(){
 function hideSearchSug(){ document.getElementById("searchSug").classList.remove("show"); }
 function sugTag(d, t){ jumpTag(d, t); hideSearchSug(); document.getElementById("searchInput").blur(); }
 function sugAuthor(a){ jumpAuthor(a); hideSearchSug(); document.getElementById("searchInput").blur(); }
+function sugSet(id){ enterSet(id); hideSearchSug(); document.getElementById("searchInput").blur(); }
 
 /* ================= 筛选 sheet ================= */
 function openFilter(){ renderFilterBody(); showSheet("filterSheet"); }
@@ -646,8 +752,9 @@ function toggleVocabEdit(){
   renderFilterBody();
 }
 function renderFilterBody(){
-  const ctxIds = contextColl ? new Set(collDescendants(contextColl)) : null;
-  const pool = ctxIds ? photos.filter(p => (p.colls||[]).some(x => ctxIds.has(x))) : photos;
+  let pool = photos;
+  if(contextSet){ const ids = new Set(setDescendants(contextSet)); pool = photos.filter(p => (p.sets||[]).some(x => ids.has(x))); }
+  else if(contextColl) pool = photos.filter(p => (p.colls||[]).includes(contextColl));
   const count = {};
   pool.forEach(p => { const eff = effTags(p); DIMS.forEach(d => (eff[d]||[]).forEach(t => {
     count[d] = count[d] || {}; count[d][t] = (count[d][t]||0) + 1;
@@ -750,7 +857,7 @@ function openDetail(id, review = false){
   const p = photos.find(x => x.id === id); if(!p) return;
   editing = { id, note: p.note, place: p.place||"",
     origin: { author: p.origin?.author || p.artist || "", platform: p.origin?.platform || "", link: p.origin?.link || p.source || "", role: p.origin?.role || "" },
-    tags: structuredClone(p.tags), colls: [...(p.colls||[])] };
+    tags: structuredClone(p.tags), colls: [...(p.colls||[])], sets: [...(p.sets||[])] };
   if(!review) reviewQueue = null;
   document.getElementById("detailTitle").innerHTML = review
     ? `显影 <span class="sub">${reviewIdx+1} / ${reviewQueue.length}</span>` : "编辑";
@@ -778,6 +885,8 @@ function renderDetailBody(p, review){
     </div>
     <datalist id="originList">${originOptions()}</datalist>
     <div class="origin-chips" id="originChips">${originChips()}</div>
+    <div class="field-label">文件夹</div>
+    <div class="chips coll-toggle-row" id="setChips">${setChips()}</div>
     <div class="field-label">灵感集</div>
     <div class="chips coll-toggle-row" id="collChips">${collChips()}</div>
     <div class="hr"></div>
@@ -882,12 +991,12 @@ function normUrl(u){
   if(u && !/^https?:\/\//i.test(u)) u = "https://" + u;
   return u;
 }
-// 当前编辑照片从所属灵感集(含上级)继承到的标签
+// 当前编辑照片从所属文件夹(含各级上级)继承到的统一标签
 function inheritedTags(d){
   const out = [], seen = new Set();
-  (editing.colls||[]).forEach(id => collAncestors(id).forEach(c => {
-    if(seen.has(c.id)) return; seen.add(c.id);
-    (c.tags?.[d]||[]).forEach(t => { if(!out.includes(t)) out.push(t); });
+  (editing.sets||[]).forEach(id => setAncestors(id).forEach(s => {
+    if(seen.has(s.id)) return; seen.add(s.id);
+    (s.tags?.[d]||[]).forEach(t => { if(!out.includes(t)) out.push(t); });
   }));
   return out;
 }
@@ -920,16 +1029,47 @@ function addTagInput(d, btn){
   inp.onblur = commit;
 }
 function collChips(){
-  const sorted = colls.slice().sort((a,b) => collPath(a.id).localeCompare(collPath(b.id), "zh"));
-  return sorted.map(c => `<button class="chip ${editing.colls.includes(c.id)?"on":""}" onclick="toggleCollOn('${c.id}',this)">${esc(collPath(c.id))}</button>`).join("")
+  return colls.map(c => `<button class="chip ${editing.colls.includes(c.id)?"on":""}" onclick="toggleCollOn('${c.id}',this)">${esc(c.name)}</button>`).join("")
     + `<button class="chip add" onclick="newCollInline(this)">＋ 新灵感集</button>`;
 }
 function toggleCollOn(id, el){
   const i = editing.colls.indexOf(id);
   i >= 0 ? editing.colls.splice(i,1) : editing.colls.push(id);
   el.classList.toggle("on");
-  // 组标签继承随所属灵感集变化,刷新各维度 chips
+}
+/* 详情卡的文件夹归属:一张图可同时在多个文件夹 */
+function setChips(){
+  const sorted = sets.slice().sort((a,b) => setPath(a.id).localeCompare(setPath(b.id), "zh"));
+  return sorted.map(s => `<button class="chip ${editing.sets.includes(s.id)?"on":""}" onclick="toggleSetOn('${s.id}',this)">${esc(setPath(s.id))}</button>`).join("")
+    + `<button class="chip add" onclick="newSetInline(this)">＋ 新文件夹</button>`;
+}
+function toggleSetOn(id, el){
+  const i = editing.sets.indexOf(id);
+  i >= 0 ? editing.sets.splice(i,1) : editing.sets.push(id);
+  el.classList.toggle("on");
+  // 统一标签继承随所属文件夹变化,刷新各维度 chips
   DIMS.forEach(d => { const box = document.getElementById("dim-"+d); if(box) box.innerHTML = dimChips(d); });
+}
+function newSetInline(btn){
+  const wrap = document.createElement("span"); wrap.className = "chip-input";
+  wrap.innerHTML = `<input placeholder="文件夹名称" enterkeyhint="done">`;
+  btn.replaceWith(wrap);
+  const inp = wrap.querySelector("input"); inp.focus();
+  let done = false;
+  const commit = async () => {
+    if(done) return; done = true;
+    const name = inp.value.trim();
+    if(name){
+      const s = {id: crypto.randomUUID(), name, parent: contextSet || null, createdAt: Date.now()};
+      sets.push(s); await putSet(s);
+      editing.sets.push(s.id);
+    }
+    const box = document.getElementById("setChips"); if(box) box.innerHTML = setChips();
+    DIMS.forEach(d => { const el = document.getElementById("dim-"+d); if(el) el.innerHTML = dimChips(d); });
+    renderSetBar();
+  };
+  inp.onkeydown = e => { if(e.key === "Enter"){ e.preventDefault(); commit(); } };
+  inp.onblur = commit;
 }
 function newCollInline(btn){
   const wrap = document.createElement("span"); wrap.className = "chip-input";
@@ -961,6 +1101,7 @@ async function saveDetail(close){
     p.place = editing.place.trim();
     p.tags = editing.tags;
     p.colls = editing.colls;
+    p.sets = editing.sets;
     const hasContent = p.note || DIMS.some(d => (p.tags[d]||[]).length);
     if(hasContent) p.dev = true;
     await putPhoto(p);
@@ -1029,22 +1170,19 @@ function openCollections(keep){
     : `<button class="chip ${newCollKind===k?"on":""}" onclick="setCollKind('${esc(k)}',this)">${esc(k)}</button>`
   ).join("") + `<button class="chip add" onclick="addKindInput(this)">＋</button>`;
   const group = kind => {
-    const roots = colls.filter(c => !c.parent && (c.kind||collKinds[0]) === kind);
-    if(!roots.length) return "";
+    const items = colls.filter(c => (c.kind||collKinds[0]) === kind);
+    if(!items.length) return "";
     return `<div class="facet-name" style="margin-top:16px">${esc(kind)}</div>` +
-      roots.map(c => collRow(c, 0)).join("");
+      items.map(c => {
+        const n = photos.filter(p => (p.colls||[]).includes(c.id)).length;
+        return `<div class="coll-item" onclick="enterCollection('${c.id}')"><b>${esc(c.name)}</b><span>${n} 张 ${collEdit?`<i class="row-del" onclick="event.stopPropagation();removeColl('${c.id}')">×</i>`:"›"}</span></div>`;
+      }).join("");
   };
   body.innerHTML = `
     <div class="chips" style="margin-bottom:10px">${kindChips}</div>
     <div class="coll-new" style="margin-top:0"><input id="newCollName" enterkeyhint="done"><button onclick="createColl()">创建</button></div>
     ${collKinds.map(group).join("")}`;
   showSheet("collSheet");
-}
-function collRow(c, depth){
-  const n = photoCountDeep(c.id);
-  const open = collEdit ? `openCollEditor('${c.id}')` : `enterCollection('${c.id}')`;
-  const row = `<div class="coll-item"${depth ? ` style="padding-left:${depth*18 + 2}px"` : ""} onclick="${open}"><b>${esc(c.name)}</b><span>${n} 张 ${collEdit ? `<i class="row-del" onclick="event.stopPropagation();removeColl('${c.id}')">×</i>` : "›"}</span></div>`;
-  return row + colls.filter(x => x.parent === c.id).map(ch => collRow(ch, depth + 1)).join("");
 }
 function setCollKind(k, el){
   newCollKind = k;
@@ -1081,115 +1219,126 @@ async function createColl(){
   colls.push(c); await putColl(c);
   openCollections(true);
 }
-/* ---- 灵感集编辑页:改名 / 上级 / 子集 / 统一标签 / 删除 ---- */
-function openCollEditor(id){
+async function removeColl(id){
   const c = colls.find(x => x.id === id); if(!c) return;
-  const body = document.getElementById("collBody");
-  const kids = colls.filter(x => x.parent === id);
+  const used = photos.filter(p => (p.colls||[]).includes(id));
+  if(!await appConfirm(used.length ? `删除「${c.name}」?${used.length} 张图会从这个灵感集移出,图本身不删。` : `删除「${c.name}」?`)) return;
+  colls = colls.filter(x => x.id !== id);
+  await tx("colls","readwrite", s => s.delete(id));
+  for(const p of used){ p.colls = p.colls.filter(x => x !== id); await putPhoto(p); }
+  if(contextColl === id){ contextColl = null; updateContextBar(); }
+  openCollections(true); renderGrid();
+}
+function enterCollection(id){
+  contextColl = id; contextSet = null;
+  updateContextBar();
+  closeAllSheets(); renderGrid();
+}
+function exitCollection(){
+  contextColl = null;
+  updateContextBar();
+  renderGrid();
+}
+
+/* ================= 文件夹编辑页:改名 / 上级 / 子文件夹 / 统一标签 / 删除 ================= */
+function openSetEditor(id){
+  const s = sets.find(x => x.id === id); if(!s) return;
+  const body = document.getElementById("setBody");
+  const kids = sets.filter(x => x.parent === id);
   body.innerHTML = `
-    <button class="sheet-close" style="display:block;padding:0 0 12px" onclick="openCollections(true)">‹ 全部灵感集</button>
-    <input id="collNameEdit" value="${esc(c.name)}">
+    <input id="setNameEdit" value="${esc(s.name)}">
     <div class="field-label">上级</div>
-    <div class="chips">${parentChips(c)}</div>
-    <div class="field-label">子集</div>
-    <div class="chips">${kids.map(k => `<button class="chip" onclick="openCollEditor('${k.id}')">${esc(k.name)}</button>`).join("")}<button class="chip add" onclick="addSubCollInput('${id}',this)">＋</button></div>
+    <div class="chips">${setParentChips(s)}</div>
+    <div class="field-label">子文件夹</div>
+    <div class="chips">${kids.map(k => `<button class="chip" onclick="openSetEditor('${k.id}')">${esc(k.name)}</button>`).join("")}<button class="chip add" onclick="addSubSetInput('${id}',this)">＋</button></div>
     <div class="hr" style="margin-top:16px"></div>
     <div class="field-label brass">统一标签</div>
-    ${DIMS.map(d => `<div class="facet"><div class="facet-name">${label(d)}</div><div class="chips" id="cdim-${d}">${collDimChips(d, c)}</div></div>`).join("")}
-    <div class="detail-meta"><span>${photoCountDeep(id)} 张</span><button onclick="removeColl('${c.id}')">删除</button></div>`;
-  const ni = document.getElementById("collNameEdit");
-  ni.onblur = () => { const v = ni.value.trim(); if(v && v !== c.name){ c.name = v; putColl(c); renderGrid(); } };
+    ${DIMS.map(d => `<div class="facet"><div class="facet-name">${label(d)}</div><div class="chips" id="sdim-${d}">${setDimChips(d, s)}</div></div>`).join("")}
+    <div class="detail-meta"><span>${setCountDeep(id)} 张</span><button onclick="removeSet('${s.id}')">删除</button></div>`;
+  const ni = document.getElementById("setNameEdit");
+  ni.onblur = () => { const v = ni.value.trim(); if(v && v !== s.name){ s.name = v; putSet(s); updateContextBar(); renderGrid(); } };
   ni.onkeydown = e => { if(e.key === "Enter"){ e.preventDefault(); ni.blur(); } };
+  showSheet("setSheet");
 }
-function parentChips(c){
-  const bad = new Set(collDescendants(c.id));   // 不能选自己或自己的后代,避免成环
-  const opts = colls.filter(x => !bad.has(x.id))
-    .sort((a,b) => collPath(a.id).localeCompare(collPath(b.id), "zh"));
-  return `<button class="chip ${!c.parent ? "on" : ""}" onclick="setCollParent('${c.id}','')">无</button>`
-    + opts.map(o => `<button class="chip ${c.parent === o.id ? "on" : ""}" onclick="setCollParent('${c.id}','${o.id}')">${esc(collPath(o.id))}</button>`).join("");
+function setParentChips(s){
+  const bad = new Set(setDescendants(s.id));   // 不能选自己或自己的后代,避免成环
+  const opts = sets.filter(x => !bad.has(x.id))
+    .sort((a,b) => setPath(a.id).localeCompare(setPath(b.id), "zh"));
+  return `<button class="chip ${!s.parent ? "on" : ""}" onclick="setSetParent('${s.id}','')">无</button>`
+    + opts.map(o => `<button class="chip ${s.parent === o.id ? "on" : ""}" onclick="setSetParent('${s.id}','${o.id}')">${esc(setPath(o.id))}</button>`).join("");
 }
-function setCollParent(id, pid){
-  const c = colls.find(x => x.id === id); if(!c) return;
-  c.parent = pid || null;
-  putColl(c);
-  openCollEditor(id); renderGrid();
+function setSetParent(id, pid){
+  const s = sets.find(x => x.id === id); if(!s) return;
+  s.parent = pid || null;
+  putSet(s);
+  openSetEditor(id); updateContextBar(); renderGrid();
 }
-function collDimChips(d, c){
-  const mine = c.tags?.[d] || [];
+function setDimChips(d, s){
+  const mine = s.tags?.[d] || [];
   const all = [...new Set([...(vocab[d]||[]), ...mine])];
-  return all.map(t => `<button class="chip ${mine.includes(t)?"on":""}" onclick="toggleCollTag('${c.id}','${d}','${esc(t)}',this)">${esc(t)}</button>`).join("")
-    + `<button class="chip add" onclick="addCollTagInput('${c.id}','${d}',this)">＋</button>`;
+  return all.map(t => `<button class="chip ${mine.includes(t)?"on":""}" onclick="toggleSetTag('${s.id}','${d}','${esc(t)}',this)">${esc(t)}</button>`).join("")
+    + `<button class="chip add" onclick="addSetTagInput('${s.id}','${d}',this)">＋</button>`;
 }
-function toggleCollTag(id, d, t, el){
-  const c = colls.find(x => x.id === id); if(!c) return;
-  c.tags = c.tags || {}; c.tags[d] = c.tags[d] || [];
-  const i = c.tags[d].indexOf(t);
-  i >= 0 ? c.tags[d].splice(i,1) : c.tags[d].push(t);
+function toggleSetTag(id, d, t, el){
+  const s = sets.find(x => x.id === id); if(!s) return;
+  s.tags = s.tags || {}; s.tags[d] = s.tags[d] || [];
+  const i = s.tags[d].indexOf(t);
+  i >= 0 ? s.tags[d].splice(i,1) : s.tags[d].push(t);
   el.classList.toggle("on");
-  putColl(c); renderGrid();
+  putSet(s); renderGrid();
 }
-function addCollTagInput(id, d, btn){
+function addSetTagInput(id, d, btn){
   const wrap = document.createElement("span"); wrap.className = "chip-input";
   wrap.innerHTML = `<input placeholder="新标签" enterkeyhint="done">`;
   btn.replaceWith(wrap);
   const inp = wrap.querySelector("input"); inp.focus();
   const commit = () => {
     const t = inp.value.trim();
-    const c = colls.find(x => x.id === id);
-    if(t && c){
+    const s = sets.find(x => x.id === id);
+    if(t && s){
       learnTag(d, t);
-      c.tags = c.tags || {}; c.tags[d] = c.tags[d] || [];
-      if(!c.tags[d].includes(t)) c.tags[d].push(t);
-      putColl(c); renderGrid();
+      s.tags = s.tags || {}; s.tags[d] = s.tags[d] || [];
+      if(!s.tags[d].includes(t)) s.tags[d].push(t);
+      putSet(s); renderGrid();
     }
-    const box = document.getElementById("cdim-" + d); if(box && c) box.innerHTML = collDimChips(d, c);
+    const box = document.getElementById("sdim-" + d); if(box && s) box.innerHTML = setDimChips(d, s);
   };
   inp.onkeydown = e => { if(e.key === "Enter"){ e.preventDefault(); commit(); } };
   inp.onblur = commit;
 }
-function addSubCollInput(pid, btn){
+function addSubSetInput(pid, btn){
   const wrap = document.createElement("span"); wrap.className = "chip-input";
-  wrap.innerHTML = `<input placeholder="子集名称" enterkeyhint="done">`;
+  wrap.innerHTML = `<input placeholder="子文件夹" enterkeyhint="done">`;
   btn.replaceWith(wrap);
   const inp = wrap.querySelector("input"); inp.focus();
+  let done = false;
   const commit = async () => {
+    if(done) return; done = true;
     const name = inp.value.trim();
     if(name){
-      const parent = colls.find(x => x.id === pid);
-      const c = {id: crypto.randomUUID(), name, kind: parent?.kind || newCollKind, parent: pid};
-      colls.push(c); await putColl(c);
+      const s = {id: crypto.randomUUID(), name, parent: pid, createdAt: Date.now()};
+      sets.push(s); await putSet(s);
     }
-    openCollEditor(pid);
+    openSetEditor(pid); renderGrid();
   };
   inp.onkeydown = e => { if(e.key === "Enter"){ e.preventDefault(); commit(); } };
   inp.onblur = commit;
 }
-async function removeColl(id){
-  const c = colls.find(x => x.id === id); if(!c) return;
-  const used = photos.filter(p => (p.colls||[]).includes(id));
-  const kids = colls.filter(x => x.parent === id);
+async function removeSet(id){
+  const s = sets.find(x => x.id === id); if(!s) return;
+  const used = photos.filter(p => (p.sets||[]).includes(id));
+  const kids = sets.filter(x => x.parent === id);
   const bits = [];
   if(used.length) bits.push(`${used.length} 张图会移出(图本身不删)`);
-  if(kids.length) bits.push(`${kids.length} 个子集上移一级`);
-  if(!await appConfirm(`删除「${c.name}」?` + (bits.length ? bits.join(",") + "。" : ""))) return;
-  for(const k of kids){ k.parent = c.parent || null; await putColl(k); }
-  colls = colls.filter(x => x.id !== id);
-  await tx("colls","readwrite", s => s.delete(id));
-  for(const p of used){ p.colls = p.colls.filter(x => x !== id); await putPhoto(p); }
-  if(contextColl === id) exitCollection();
-  openCollections(true); renderGrid();
-}
-function enterCollection(id){
-  contextColl = id;
-  const c = colls.find(x => x.id === id);
-  document.getElementById("contextName").textContent = c ? collPath(id) : "";
-  document.getElementById("contextBar").classList.add("show");
+  if(kids.length) bits.push(`${kids.length} 个子文件夹上移一级`);
+  if(!await appConfirm(`删除「${s.name}」?` + (bits.length ? bits.join(",") + "。" : ""))) return;
+  for(const k of kids){ k.parent = s.parent || null; await putSet(k); }
+  sets = sets.filter(x => x.id !== id);
+  await delSet(id);
+  for(const p of used){ p.sets = p.sets.filter(x => x !== id); await putPhoto(p); }
+  if(contextSet && !sets.find(x => x.id === contextSet)) contextSet = s.parent || null;
+  updateContextBar();
   closeAllSheets(); renderGrid();
-}
-function exitCollection(){
-  contextColl = null;
-  document.getElementById("contextBar").classList.remove("show");
-  renderGrid();
 }
 
 /* ================= 备份 ================= */
@@ -1209,7 +1358,7 @@ function openBackup(){
       <button onclick="exportZip()">导出图库 (ZIP)</button>
     </div>
     <p style="font-size:12px;color:var(--ink-faint);margin:8px 0 0">ZIP:图片 + 可直接打开的清单(HTML/CSV),给任何人看,不用于恢复</p>
-    <p style="font-size:12px;color:var(--ink-faint);margin-top:14px">共 ${photos.length} 张图 · ${colls.length} 个灵感集</p>`;
+    <p style="font-size:12px;color:var(--ink-faint);margin-top:14px">共 ${photos.length} 张图 · ${sets.length} 个文件夹 · ${colls.length} 个灵感集</p>`;
   showSheet("backupSheet");
 }
 const blobToB64 = b => new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(b); });
@@ -1269,7 +1418,7 @@ async function exportZip(){
     const list = photos.slice().sort((a,b) => a.createdAt - b.createdAt);
     const enc = new TextEncoder();
     const entries = [], rows = [], cards = [];
-    rows.push(["文件名","收入日期","被什么打动",...DIMS,"作者","身份","平台","链接","地点","灵感集"]);
+    rows.push(["文件名","收入日期","被什么打动",...DIMS,"作者","身份","平台","链接","地点","文件夹","灵感集"]);
     let i = 0;
     for(const p of list){
       i++;
@@ -1279,10 +1428,11 @@ async function exportZip(){
       entries.push({name: fname, data: new Uint8Array(await p.blob.arrayBuffer())});
       const o = p.origin || {};
       const eff = effTags(p);
-      const collNames = (p.colls||[]).filter(id => colls.find(c => c.id === id)).map(id => collPath(id));
+      const collNames = (p.colls||[]).map(id => (colls.find(c => c.id === id)||{}).name).filter(Boolean);
+      const setNames = (p.sets||[]).filter(id => sets.find(s => s.id === id)).map(id => setPath(id));
       const date = new Date(p.createdAt).toLocaleDateString("zh-CN");
       rows.push([fname, date, p.note||"", ...DIMS.map(d => (eff[d]||[]).join(" ")),
-        o.author||"", o.role||"", o.platform||"", o.link||"", p.place||"", collNames.join(" ")]);
+        o.author||"", o.role||"", o.platform||"", o.link||"", p.place||"", setNames.join(" "), collNames.join(" ")]);
       const tagLine = DIMS.flatMap(d => eff[d]||[]).map(esc).join(" · ");
       const srcLine = [o.author, o.platform].filter(Boolean).map(esc).join(" · ");
       cards.push(`<figure><img src="${fname}" loading="lazy"><figcaption>
@@ -1317,7 +1467,7 @@ img{width:100%;display:block}figcaption{padding:9px 11px 11px;font-size:12.5px;l
 async function exportAll(){
   if(!photos.length) return toast("暗盒还是空的");
   toast("正在打包…");
-  const out = { v:1, colls, vocab, roles: roleMap, photos: [] };
+  const out = { v:1, colls, sets, vocab, roles: roleMap, photos: [] };
   for(const p of photos){
     const rec = {...p, blob: await blobToB64(p.blob)};
     if(p.orig) rec.orig = await blobToB64(p.orig);
@@ -1349,6 +1499,7 @@ document.getElementById("restoreInput").onchange = async e => {
   try{
     const data = JSON.parse(await f.text());
     for(const c of (data.colls||[])) if(!colls.find(x=>x.id===c.id)){ colls.push(c); await putColl(c); }
+    for(const s of (data.sets||[])) if(!sets.find(x=>x.id===s.id)){ sets.push(s); await putSet(s); }
     if(data.vocab){ for(const d of DIMS) vocab[d] = [...new Set([...(vocab[d]||[]), ...(data.vocab[d]||[])])]; saveVocab(); }
     if(data.roles){ roleMap = {...data.roles, ...roleMap}; saveRoles(); }
     let n = 0;
