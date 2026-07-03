@@ -180,7 +180,7 @@ main{padding:12px 12px calc(96px + var(--safe-b))}
 
 <header>
   <div class="head-row">
-    <div class="wordmark">暗 盒<small>OBSCURA · v0.11</small></div>
+    <div class="wordmark">暗 盒<small>OBSCURA · v0.12</small></div>
     <div class="head-actions">
       <button class="icon-btn" id="btnUndev" onclick="toggleUndev()">待显影 <span id="undevCount"></span></button>
       <button class="icon-btn" onclick="openCollections()">灵感集</button>
@@ -664,6 +664,7 @@ function renderDetailBody(p, review){
     <img class="detail-img" id="detailImg" src="${urlOf(p)}" alt="">
     <div class="img-tools">
       <button class="src-btn" onclick="openCrop()">裁剪</button>
+      <button class="src-btn" onclick="sharePhoto()">分享</button>
       ${p.orig ? `<button class="src-btn" onclick="restoreOrig()">还原原图</button>` : ""}
     </div>
     <div class="why-block">
@@ -831,6 +832,30 @@ async function removePhoto(id){
   photos = photos.filter(p => p.id !== id);
   reviewQueue = null;
   closeAllSheets(); renderGrid(); updateUndevCount();
+}
+
+// 分享 / 存图单张:优先系统分享面板(内含存到相册),不支持则降级下载
+async function sharePhoto(){
+  const p = photos.find(x => x.id === editing.id); if(!p) return;
+  const slug = cleanName(editing.note) || "暗盒";
+  const file = new File([p.blob], slug + ".jpg", {type: "image/jpeg"});
+  const o = editing.origin || {};
+  const src = [o.author, o.platform].filter(Boolean).join(" · ");
+  const text = [editing.note.trim(), src].filter(Boolean).join("\n");
+  const withText = {files:[file]}; if(text) withText.text = text;
+  try{
+    if(navigator.canShare && navigator.canShare(withText)) return await navigator.share(withText);
+    if(navigator.canShare && navigator.canShare({files:[file]})) return await navigator.share({files:[file]});
+  }catch(err){ if(err && err.name === "AbortError") return; }   // 用户取消,不算失败
+  downloadPhoto(p, slug);
+}
+function downloadPhoto(p, slug){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(p.blob);
+  a.download = slug + ".jpg";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast("已导出图片");
 }
 
 /* ================= 灵感集 ================= */
