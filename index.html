@@ -111,6 +111,7 @@ main{padding:12px 12px calc(96px + var(--safe-b))}
 @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
 .card .tags i{cursor:pointer}
 .chip.add{border-style:dashed;color:var(--ink-faint)}
+.chip.inherit{border-style:dashed;border-color:rgba(201,169,107,.5);color:var(--brass);background:var(--brass-dim);opacity:.85}
 .chip-input{display:inline-flex}
 .chip-input input{width:104px;padding:5px 11px;border-radius:17px;font-size:13.5px}
 
@@ -189,7 +190,7 @@ main{padding:12px 12px calc(96px + var(--safe-b))}
 
 <header>
   <div class="head-row">
-    <div class="wordmark">暗 盒<small>OBSCURA · v0.14</small></div>
+    <div class="wordmark">暗 盒<small>OBSCURA · v0.15</small></div>
     <div class="head-actions">
       <button class="icon-btn" id="btnUndev" onclick="toggleUndev()">待显影 <span id="undevCount"></span></button>
       <button class="icon-btn" onclick="openCollections()">灵感集</button>
@@ -371,6 +372,34 @@ const putPhoto = p => tx("photos","readwrite", s => s.put(p));
 const delPhoto = id => tx("photos","readwrite", s => s.delete(id));
 const putColl  = c => tx("colls","readwrite", s => s.put(c));
 
+/* ---- 灵感集树:parent 字段构成层级,tags 为组级统一标签 ---- */
+function collAncestors(id){        // 自身 + 各级上级
+  const out = []; let c = colls.find(x => x.id === id), guard = 0;
+  while(c && guard++ < 20){ out.push(c); c = colls.find(x => x.id === c.parent); }
+  return out;
+}
+function collDescendants(id){      // 自身 + 所有后代 id
+  const out = [id];
+  for(let i = 0; i < out.length; i++)
+    colls.filter(c => c.parent === out[i]).forEach(c => out.push(c.id));
+  return out;
+}
+function collPath(id){ return collAncestors(id).reverse().map(c => c.name).join(" / "); }
+function photoCountDeep(id){
+  const ids = new Set(collDescendants(id));
+  return photos.filter(p => (p.colls||[]).some(x => ids.has(x))).length;
+}
+// 有效标签 = 照片自身标签 ∪ 所属灵感集(含各级上级)的统一标签
+function effTags(p){
+  const eff = {}; DIMS.forEach(d => eff[d] = [...(p.tags[d]||[])]);
+  const seen = new Set();
+  (p.colls||[]).forEach(id => collAncestors(id).forEach(c => {
+    if(seen.has(c.id)) return; seen.add(c.id);
+    DIMS.forEach(d => (c.tags?.[d]||[]).forEach(t => { if(!eff[d].includes(t)) eff[d].push(t); }));
+  }));
+  return eff;
+}
+
 function urlOf(p){
   if(!urlCache.has(p.id)) urlCache.set(p.id, URL.createObjectURL(p.blob));
   return urlCache.get(p.id);
@@ -479,16 +508,19 @@ let contextColl = null;      // 灵感集视角
 
 function visiblePhotos(){
   const q = document.getElementById("searchInput").value.trim().toLowerCase();
+  const ctxIds = contextColl ? new Set(collDescendants(contextColl)) : null;
+  const needEff = q || Object.keys(filters).length;
   return photos.filter(p => {
-    if(contextColl && !(p.colls||[]).includes(contextColl)) return false;
+    if(ctxIds && !(p.colls||[]).some(id => ctxIds.has(id))) return false;
     if(authorFilter && p.origin?.author !== authorFilter && p.origin?.platform !== authorFilter) return false;
     if(undevOnly && p.dev) return false;
+    const eff = needEff ? effTags(p) : null;
     for(const d in filters)
       for(const t of filters[d])
-        if(!(p.tags[d]||[]).includes(t)) return false;
+        if(!(eff[d]||[]).includes(t)) return false;
     if(q){
       const o = p.origin || {};
-      const hay = (p.note + " " + (o.author||"") + " " + (o.role||"") + " " + (o.platform||"") + " " + (o.link||"") + " " + (p.place||"") + " " + DIMS.map(d => (p.tags[d]||[]).join(" ")).join(" ")).toLowerCase();
+      const hay = (p.note + " " + (o.author||"") + " " + (o.role||"") + " " + (o.platform||"") + " " + (o.link||"") + " " + (p.place||"") + " " + DIMS.map(d => (eff[d]||[]).join(" ")).join(" ")).toLowerCase();
       if(!hay.includes(q)) return false;
     }
     return true;
@@ -509,8 +541,9 @@ function renderGrid(){
   const list = visiblePhotos();
   const grid = document.getElementById("grid");
   grid.innerHTML = list.map(p => {
-    const prime = (p.tags["吸引点"]||[]).map(t => ({d:"吸引点", t}));
-    const rest  = DIMS.filter(d => d !== "吸引点").flatMap(d => (p.tags[d]||[]).map(t => ({d,t})));
+    const eff = effTags(p);
+    const prime = (eff["吸引点"]||[]).map(t => ({d:"吸引点", t}));
+    const rest  = DIMS.filter(d => d !== "吸引点").flatMap(d => (eff[d]||[]).map(t => ({d,t})));
     const chip = (x, cls) => `<i class="${cls}" onclick="event.stopPropagation();jumpTag('${x.d}','${esc(x.t)}')">${esc(x.t)}</i>`;
     return `<div class="card" onclick="openDetail('${p.id}')">
       <img src="${urlOf(p)}" loading="lazy" alt="">
@@ -589,7 +622,7 @@ function renderSearchSug(){
   const authors = [...new Set(photos.map(p => p.origin?.author).filter(Boolean))];
   const plats   = [...new Set(photos.map(p => p.origin?.platform).filter(Boolean))];
   const cnt = {};
-  photos.forEach(p => (p.tags["吸引点"]||[]).forEach(t => cnt[t] = (cnt[t]||0) + 1));
+  photos.forEach(p => (effTags(p)["吸引点"]||[]).forEach(t => cnt[t] = (cnt[t]||0) + 1));
   const tags = Object.keys(cnt).sort((a,b) => cnt[b] - cnt[a]);
   const hit = v => !q || v.toLowerCase().includes(q);
   const chips = [
@@ -613,11 +646,12 @@ function toggleVocabEdit(){
   renderFilterBody();
 }
 function renderFilterBody(){
-  const pool = contextColl ? photos.filter(p => (p.colls||[]).includes(contextColl)) : photos;
+  const ctxIds = contextColl ? new Set(collDescendants(contextColl)) : null;
+  const pool = ctxIds ? photos.filter(p => (p.colls||[]).some(x => ctxIds.has(x))) : photos;
   const count = {};
-  pool.forEach(p => DIMS.forEach(d => (p.tags[d]||[]).forEach(t => {
+  pool.forEach(p => { const eff = effTags(p); DIMS.forEach(d => (eff[d]||[]).forEach(t => {
     count[d] = count[d] || {}; count[d][t] = (count[d][t]||0) + 1;
-  })));
+  })); });
   const body = document.getElementById("filterBody");
   const resetBar = vocabEdit
     ? `<button class="reset-vocab" onclick="resetVocab('吸引点')">「吸引点」恢复默认顺序</button>` : "";
@@ -848,11 +882,23 @@ function normUrl(u){
   if(u && !/^https?:\/\//i.test(u)) u = "https://" + u;
   return u;
 }
+// 当前编辑照片从所属灵感集(含上级)继承到的标签
+function inheritedTags(d){
+  const out = [], seen = new Set();
+  (editing.colls||[]).forEach(id => collAncestors(id).forEach(c => {
+    if(seen.has(c.id)) return; seen.add(c.id);
+    (c.tags?.[d]||[]).forEach(t => { if(!out.includes(t)) out.push(t); });
+  }));
+  return out;
+}
 function dimChips(d){
   const mine = editing.tags[d]||[];
-  const all = [...new Set([...(vocab[d]||[]), ...mine])];
-  return all.map(t => `<button class="chip ${mine.includes(t)?"on":""}" onclick="toggleTag('${d}','${esc(t)}',this)">${esc(t)}</button>`).join("")
-    + `<button class="chip add" onclick="addTagInput('${d}',this)">＋</button>`;
+  const inh = inheritedTags(d);
+  const all = [...new Set([...(vocab[d]||[]), ...mine, ...inh])];
+  return all.map(t => {
+    if(!mine.includes(t) && inh.includes(t)) return `<span class="chip inherit">${esc(t)}</span>`;
+    return `<button class="chip ${mine.includes(t)?"on":""}" onclick="toggleTag('${d}','${esc(t)}',this)">${esc(t)}</button>`;
+  }).join("") + `<button class="chip add" onclick="addTagInput('${d}',this)">＋</button>`;
 }
 function toggleTag(d,t,el){
   editing.tags[d] = editing.tags[d]||[];
@@ -874,13 +920,16 @@ function addTagInput(d, btn){
   inp.onblur = commit;
 }
 function collChips(){
-  return colls.map(c => `<button class="chip ${editing.colls.includes(c.id)?"on":""}" onclick="toggleCollOn('${c.id}',this)">${esc(c.name)}</button>`).join("")
+  const sorted = colls.slice().sort((a,b) => collPath(a.id).localeCompare(collPath(b.id), "zh"));
+  return sorted.map(c => `<button class="chip ${editing.colls.includes(c.id)?"on":""}" onclick="toggleCollOn('${c.id}',this)">${esc(collPath(c.id))}</button>`).join("")
     + `<button class="chip add" onclick="newCollInline(this)">＋ 新灵感集</button>`;
 }
 function toggleCollOn(id, el){
   const i = editing.colls.indexOf(id);
   i >= 0 ? editing.colls.splice(i,1) : editing.colls.push(id);
   el.classList.toggle("on");
+  // 组标签继承随所属灵感集变化,刷新各维度 chips
+  DIMS.forEach(d => { const box = document.getElementById("dim-"+d); if(box) box.innerHTML = dimChips(d); });
 }
 function newCollInline(btn){
   const wrap = document.createElement("span"); wrap.className = "chip-input";
@@ -980,19 +1029,22 @@ function openCollections(keep){
     : `<button class="chip ${newCollKind===k?"on":""}" onclick="setCollKind('${esc(k)}',this)">${esc(k)}</button>`
   ).join("") + `<button class="chip add" onclick="addKindInput(this)">＋</button>`;
   const group = kind => {
-    const items = colls.filter(c => (c.kind||collKinds[0]) === kind);
-    if(!items.length) return "";
+    const roots = colls.filter(c => !c.parent && (c.kind||collKinds[0]) === kind);
+    if(!roots.length) return "";
     return `<div class="facet-name" style="margin-top:16px">${esc(kind)}</div>` +
-      items.map(c => {
-        const n = photos.filter(p => (p.colls||[]).includes(c.id)).length;
-        return `<div class="coll-item" onclick="enterCollection('${c.id}')"><b>${esc(c.name)}</b><span>${n} 张 ${collEdit?`<i class="row-del" onclick="event.stopPropagation();removeColl('${c.id}')">×</i>`:"›"}</span></div>`;
-      }).join("");
+      roots.map(c => collRow(c, 0)).join("");
   };
   body.innerHTML = `
     <div class="chips" style="margin-bottom:10px">${kindChips}</div>
     <div class="coll-new" style="margin-top:0"><input id="newCollName" enterkeyhint="done"><button onclick="createColl()">创建</button></div>
     ${collKinds.map(group).join("")}`;
   showSheet("collSheet");
+}
+function collRow(c, depth){
+  const n = photoCountDeep(c.id);
+  const open = collEdit ? `openCollEditor('${c.id}')` : `enterCollection('${c.id}')`;
+  const row = `<div class="coll-item"${depth ? ` style="padding-left:${depth*18 + 2}px"` : ""} onclick="${open}"><b>${esc(c.name)}</b><span>${n} 张 ${collEdit ? `<i class="row-del" onclick="event.stopPropagation();removeColl('${c.id}')">×</i>` : "›"}</span></div>`;
+  return row + colls.filter(x => x.parent === c.id).map(ch => collRow(ch, depth + 1)).join("");
 }
 function setCollKind(k, el){
   newCollKind = k;
@@ -1029,10 +1081,98 @@ async function createColl(){
   colls.push(c); await putColl(c);
   openCollections(true);
 }
+/* ---- 灵感集编辑页:改名 / 上级 / 子集 / 统一标签 / 删除 ---- */
+function openCollEditor(id){
+  const c = colls.find(x => x.id === id); if(!c) return;
+  const body = document.getElementById("collBody");
+  const kids = colls.filter(x => x.parent === id);
+  body.innerHTML = `
+    <button class="sheet-close" style="display:block;padding:0 0 12px" onclick="openCollections(true)">‹ 全部灵感集</button>
+    <input id="collNameEdit" value="${esc(c.name)}">
+    <div class="field-label">上级</div>
+    <div class="chips">${parentChips(c)}</div>
+    <div class="field-label">子集</div>
+    <div class="chips">${kids.map(k => `<button class="chip" onclick="openCollEditor('${k.id}')">${esc(k.name)}</button>`).join("")}<button class="chip add" onclick="addSubCollInput('${id}',this)">＋</button></div>
+    <div class="hr" style="margin-top:16px"></div>
+    <div class="field-label brass">统一标签</div>
+    ${DIMS.map(d => `<div class="facet"><div class="facet-name">${label(d)}</div><div class="chips" id="cdim-${d}">${collDimChips(d, c)}</div></div>`).join("")}
+    <div class="detail-meta"><span>${photoCountDeep(id)} 张</span><button onclick="removeColl('${c.id}')">删除</button></div>`;
+  const ni = document.getElementById("collNameEdit");
+  ni.onblur = () => { const v = ni.value.trim(); if(v && v !== c.name){ c.name = v; putColl(c); renderGrid(); } };
+  ni.onkeydown = e => { if(e.key === "Enter"){ e.preventDefault(); ni.blur(); } };
+}
+function parentChips(c){
+  const bad = new Set(collDescendants(c.id));   // 不能选自己或自己的后代,避免成环
+  const opts = colls.filter(x => !bad.has(x.id))
+    .sort((a,b) => collPath(a.id).localeCompare(collPath(b.id), "zh"));
+  return `<button class="chip ${!c.parent ? "on" : ""}" onclick="setCollParent('${c.id}','')">无</button>`
+    + opts.map(o => `<button class="chip ${c.parent === o.id ? "on" : ""}" onclick="setCollParent('${c.id}','${o.id}')">${esc(collPath(o.id))}</button>`).join("");
+}
+function setCollParent(id, pid){
+  const c = colls.find(x => x.id === id); if(!c) return;
+  c.parent = pid || null;
+  putColl(c);
+  openCollEditor(id); renderGrid();
+}
+function collDimChips(d, c){
+  const mine = c.tags?.[d] || [];
+  const all = [...new Set([...(vocab[d]||[]), ...mine])];
+  return all.map(t => `<button class="chip ${mine.includes(t)?"on":""}" onclick="toggleCollTag('${c.id}','${d}','${esc(t)}',this)">${esc(t)}</button>`).join("")
+    + `<button class="chip add" onclick="addCollTagInput('${c.id}','${d}',this)">＋</button>`;
+}
+function toggleCollTag(id, d, t, el){
+  const c = colls.find(x => x.id === id); if(!c) return;
+  c.tags = c.tags || {}; c.tags[d] = c.tags[d] || [];
+  const i = c.tags[d].indexOf(t);
+  i >= 0 ? c.tags[d].splice(i,1) : c.tags[d].push(t);
+  el.classList.toggle("on");
+  putColl(c); renderGrid();
+}
+function addCollTagInput(id, d, btn){
+  const wrap = document.createElement("span"); wrap.className = "chip-input";
+  wrap.innerHTML = `<input placeholder="新标签" enterkeyhint="done">`;
+  btn.replaceWith(wrap);
+  const inp = wrap.querySelector("input"); inp.focus();
+  const commit = () => {
+    const t = inp.value.trim();
+    const c = colls.find(x => x.id === id);
+    if(t && c){
+      learnTag(d, t);
+      c.tags = c.tags || {}; c.tags[d] = c.tags[d] || [];
+      if(!c.tags[d].includes(t)) c.tags[d].push(t);
+      putColl(c); renderGrid();
+    }
+    const box = document.getElementById("cdim-" + d); if(box && c) box.innerHTML = collDimChips(d, c);
+  };
+  inp.onkeydown = e => { if(e.key === "Enter"){ e.preventDefault(); commit(); } };
+  inp.onblur = commit;
+}
+function addSubCollInput(pid, btn){
+  const wrap = document.createElement("span"); wrap.className = "chip-input";
+  wrap.innerHTML = `<input placeholder="子集名称" enterkeyhint="done">`;
+  btn.replaceWith(wrap);
+  const inp = wrap.querySelector("input"); inp.focus();
+  const commit = async () => {
+    const name = inp.value.trim();
+    if(name){
+      const parent = colls.find(x => x.id === pid);
+      const c = {id: crypto.randomUUID(), name, kind: parent?.kind || newCollKind, parent: pid};
+      colls.push(c); await putColl(c);
+    }
+    openCollEditor(pid);
+  };
+  inp.onkeydown = e => { if(e.key === "Enter"){ e.preventDefault(); commit(); } };
+  inp.onblur = commit;
+}
 async function removeColl(id){
   const c = colls.find(x => x.id === id); if(!c) return;
   const used = photos.filter(p => (p.colls||[]).includes(id));
-  if(!await appConfirm(used.length ? `删除「${c.name}」?${used.length} 张图会从这个灵感集移出,图本身不删。` : `删除「${c.name}」?`)) return;
+  const kids = colls.filter(x => x.parent === id);
+  const bits = [];
+  if(used.length) bits.push(`${used.length} 张图会移出(图本身不删)`);
+  if(kids.length) bits.push(`${kids.length} 个子集上移一级`);
+  if(!await appConfirm(`删除「${c.name}」?` + (bits.length ? bits.join(",") + "。" : ""))) return;
+  for(const k of kids){ k.parent = c.parent || null; await putColl(k); }
   colls = colls.filter(x => x.id !== id);
   await tx("colls","readwrite", s => s.delete(id));
   for(const p of used){ p.colls = p.colls.filter(x => x !== id); await putPhoto(p); }
@@ -1042,7 +1182,7 @@ async function removeColl(id){
 function enterCollection(id){
   contextColl = id;
   const c = colls.find(x => x.id === id);
-  document.getElementById("contextName").textContent = c ? c.name : "";
+  document.getElementById("contextName").textContent = c ? collPath(id) : "";
   document.getElementById("contextBar").classList.add("show");
   closeAllSheets(); renderGrid();
 }
@@ -1138,11 +1278,12 @@ async function exportZip(){
       const fname = `images/${num}${slug ? "-" + slug : ""}.jpg`;
       entries.push({name: fname, data: new Uint8Array(await p.blob.arrayBuffer())});
       const o = p.origin || {};
-      const collNames = (p.colls||[]).map(id => (colls.find(c => c.id === id)||{}).name).filter(Boolean);
+      const eff = effTags(p);
+      const collNames = (p.colls||[]).filter(id => colls.find(c => c.id === id)).map(id => collPath(id));
       const date = new Date(p.createdAt).toLocaleDateString("zh-CN");
-      rows.push([fname, date, p.note||"", ...DIMS.map(d => (p.tags[d]||[]).join(" ")),
+      rows.push([fname, date, p.note||"", ...DIMS.map(d => (eff[d]||[]).join(" ")),
         o.author||"", o.role||"", o.platform||"", o.link||"", p.place||"", collNames.join(" ")]);
-      const tagLine = DIMS.flatMap(d => p.tags[d]||[]).map(esc).join(" · ");
+      const tagLine = DIMS.flatMap(d => eff[d]||[]).map(esc).join(" · ");
       const srcLine = [o.author, o.platform].filter(Boolean).map(esc).join(" · ");
       cards.push(`<figure><img src="${fname}" loading="lazy"><figcaption>
         ${p.note ? `<p class="n">${esc(p.note)}</p>` : ""}
