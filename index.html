@@ -1,0 +1,1211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#17161A">
+<title>暗盒 · 摄影素材库</title>
+<style>
+:root{
+  --bg:#17161A; --surface:#201F24; --surface2:#28272D; --line:#2E2D33;
+  --ink:#EDEAE4; --ink-dim:#9B978F; --ink-faint:#6B6862;
+  --brass:#C9A96B; --brass-dim:rgba(201,169,107,.14);
+  --danger:#C96B6B;
+  --radius:14px; --safe-b:env(safe-area-inset-bottom,0px);
+  --serif:"Noto Serif SC","Songti SC","STSong",serif;
+  --sans:-apple-system,"PingFang SC","Noto Sans SC",system-ui,sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55}
+button{font-family:inherit;color:inherit;background:none;border:none;font-size:inherit;cursor:pointer}
+input,textarea{font-family:inherit;font-size:inherit;color:var(--ink);background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:9px 12px;width:100%;outline:none}
+input:focus,textarea:focus{border-color:var(--brass)}
+::placeholder{color:var(--ink-faint)}
+
+/* ---------- header ---------- */
+header{position:sticky;top:0;z-index:20;background:rgba(23,22,26,.9);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line);padding:12px 16px 10px}
+.head-row{display:flex;align-items:baseline;justify-content:space-between}
+.wordmark{font-family:var(--serif);font-size:22px;letter-spacing:.14em;font-weight:600}
+.wordmark small{font-family:var(--sans);font-size:11px;letter-spacing:.08em;color:var(--ink-faint);margin-left:8px}
+.head-actions{display:flex;gap:6px}
+.icon-btn{padding:6px 10px;border-radius:9px;color:var(--ink-dim);font-size:13px;border:1px solid transparent}
+.icon-btn:active{background:var(--surface2)}
+.icon-btn.on{color:var(--brass);border-color:var(--brass);background:var(--brass-dim)}
+
+/* search + filter row */
+.tool-row{display:flex;gap:8px;margin-top:10px}
+.tool-row input{flex:1;padding:7px 12px;border-radius:20px;font-size:14px}
+.filter-btn{white-space:nowrap;padding:7px 13px;border:1px solid var(--line);border-radius:20px;font-size:14px;color:var(--ink-dim)}
+.filter-btn.active{color:var(--brass);border-color:var(--brass);background:var(--brass-dim)}
+
+/* active filter chips */
+.active-chips{display:flex;gap:6px;overflow-x:auto;margin-top:8px;padding-bottom:2px;scrollbar-width:none}
+.active-chips::-webkit-scrollbar{display:none}
+.active-chips:empty{display:none}
+.a-chip{white-space:nowrap;font-size:12px;padding:4px 10px;border-radius:14px;background:var(--brass-dim);color:var(--brass);border:1px solid rgba(201,169,107,.35)}
+.a-chip span{opacity:.7;margin-left:4px}
+
+/* ---------- context bar (collection view) ---------- */
+.context-bar{display:none;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--surface)}
+.context-bar.show{display:flex}
+.context-bar b{font-family:var(--serif);letter-spacing:.06em}
+.context-bar button{color:var(--ink-dim);font-size:13px}
+
+/* ---------- grid ---------- */
+main{padding:12px 12px calc(96px + var(--safe-b))}
+.grid{column-count:2;column-gap:10px}
+.card{break-inside:avoid;margin-bottom:10px;background:var(--surface);border-radius:var(--radius);overflow:hidden;border:1px solid var(--line)}
+.card img{width:100%;display:block;background:var(--surface2)}
+.card .plaque{padding:8px 10px 9px}
+.card .note{font-size:12.5px;color:var(--ink);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card .note.empty{color:var(--ink-faint);font-style:normal}
+.card .tags{margin-top:5px;font-size:11px;color:var(--ink-faint);letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .tags i{font-style:normal;color:var(--ink-faint)}
+.card .tags i.pr{color:var(--brass);opacity:.95}
+.badge-undev{display:inline-block;font-size:10.5px;color:var(--brass);border:1px solid rgba(201,169,107,.4);border-radius:9px;padding:1px 7px;margin-top:5px}
+
+/* empty state */
+.empty{padding:64px 28px;text-align:center;color:var(--ink-dim)}
+.empty .mark{font-family:var(--serif);font-size:40px;color:var(--ink-faint);letter-spacing:.2em;margin-bottom:14px}
+.empty p{font-size:13.5px;line-height:1.8}
+.empty button{margin-top:18px;color:var(--brass);border:1px solid var(--brass);border-radius:22px;padding:9px 22px}
+
+/* ---------- FAB ---------- */
+.fab{position:fixed;right:18px;bottom:calc(22px + var(--safe-b));z-index:25;width:56px;height:56px;border-radius:50%;background:var(--brass);color:#17161A;font-size:26px;font-weight:300;box-shadow:0 6px 20px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}
+.fab:active{transform:scale(.94)}
+
+/* ---------- sheets ---------- */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:40;opacity:0;pointer-events:none;transition:opacity .22s}
+.scrim.show{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--surface);border-radius:20px 20px 0 0;border-top:1px solid var(--line);max-height:88vh;display:flex;flex-direction:column;transform:translateY(105%);transition:transform .26s cubic-bezier(.32,.72,.28,1)}
+.sheet.show{transform:translateY(0)}
+.sheet-head{padding:14px 18px 10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.sheet-head b{font-family:var(--serif);font-size:16px;letter-spacing:.08em}
+.sheet-head .sub{font-size:12px;color:var(--ink-faint);margin-left:8px;font-family:var(--sans);letter-spacing:0}
+.sheet-body{overflow-y:auto;padding:0 18px calc(20px + var(--safe-b));-webkit-overflow-scrolling:touch}
+.sheet-close{color:var(--ink-dim);font-size:14px;padding:4px 8px}
+.sheet-done{color:var(--brass);font-size:15px;padding:4px 8px;font-weight:500}
+
+/* facet blocks */
+.facet{margin-bottom:16px}
+.facet-name{font-size:12px;color:var(--ink-faint);letter-spacing:.16em;margin-bottom:8px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{padding:6px 13px;border-radius:17px;border:1px solid var(--line);font-size:13.5px;color:var(--ink-dim);background:var(--surface2)}
+.chip.on{color:var(--brass);border-color:var(--brass);background:var(--brass-dim)}
+.chip em{font-style:normal;font-size:11px;color:var(--ink-faint);margin-left:5px}
+.chip.on em{color:var(--brass);opacity:.75}
+.chip.zero{opacity:.45}
+.chip.del{border-color:rgba(201,107,107,.45);color:var(--ink-dim);touch-action:none;user-select:none;-webkit-user-select:none}
+.chip.del .x{font-style:normal;color:var(--danger);padding:2px 0 2px 8px}
+.chip.del.dragging{opacity:.55;border-color:var(--brass);transform:scale(1.06)}
+.reset-vocab{display:block;width:100%;text-align:left;font-size:13px;color:var(--brass);border:1px dashed rgba(201,169,107,.4);border-radius:10px;padding:9px 12px;margin-bottom:16px}
+.detecting{font-size:11px;color:var(--brass);letter-spacing:.06em;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+.card .tags i{cursor:pointer}
+.chip.add{border-style:dashed;color:var(--ink-faint)}
+.chip-input{display:inline-flex}
+.chip-input input{width:104px;padding:5px 11px;border-radius:17px;font-size:13.5px}
+
+/* source link */
+.card-src{display:inline-block;font-size:11px;color:var(--ink-dim);text-decoration:none;border-bottom:1px solid var(--line);margin-top:5px}
+.origin-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.origin-chips:empty{margin-top:0}
+.o-chip{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--ink);background:var(--surface2);border:1px solid var(--line);border-radius:16px;padding:5px 11px;text-decoration:none}
+.o-chip b{font-weight:400;font-size:11px;color:var(--brass);letter-spacing:.08em}
+.o-chip.link b{color:var(--brass)}
+.o-chip i{font-style:normal;color:var(--ink-faint);cursor:pointer;padding:0 2px}
+.o-chip i:active{color:var(--danger)}
+.src-row{display:flex;gap:8px;margin-bottom:4px}
+.src-row input{flex:1;min-width:0;font-size:13px}
+.src-btn{white-space:nowrap;font-size:13px;color:var(--brass);border:1px solid var(--line);border-radius:10px;padding:0 12px}
+
+/* why block: 唯一必答的层 */
+.why-block{border-left:2px solid var(--brass);padding:2px 0 2px 12px;margin:16px 0 18px}
+.field-label.brass{color:var(--brass)}
+.why-block .chip.on{background:var(--brass);color:#17161A;border-color:var(--brass);font-weight:500}
+.hr{height:1px;background:var(--line);margin:4px 0 18px}
+.img-tools{display:flex;gap:8px;margin-top:10px}
+.img-tools .src-btn{padding:5px 14px}
+
+/* crop */
+.crop-stage{display:flex;justify-content:center;padding:6px 0 18px;overflow:hidden}
+.crop-wrap{position:relative;display:inline-block;touch-action:none;overflow:hidden;border-radius:8px}
+.crop-wrap img{display:block;max-width:100%;max-height:58vh;user-select:none;-webkit-user-drag:none}
+.crop-rect{position:absolute;border:1.5px solid var(--brass);box-shadow:0 0 0 9999px rgba(0,0,0,.6);cursor:move;touch-action:none}
+.crop-h{position:absolute;width:30px;height:30px;touch-action:none}
+.crop-h::after{content:"";position:absolute;inset:7px;border:2.5px solid var(--brass)}
+.crop-h[data-c=nw]{left:-15px;top:-15px}.crop-h[data-c=nw]::after{border-right:none;border-bottom:none}
+.crop-h[data-c=ne]{right:-15px;top:-15px}.crop-h[data-c=ne]::after{border-left:none;border-bottom:none}
+.crop-h[data-c=sw]{left:-15px;bottom:-15px}.crop-h[data-c=sw]::after{border-right:none;border-top:none}
+.crop-h[data-c=se]{right:-15px;bottom:-15px}.crop-h[data-c=se]::after{border-left:none;border-top:none}
+
+/* detail sheet */
+.detail-img{width:calc(100% + 36px);margin:0 -18px;display:block;background:#000;max-height:52vh;object-fit:contain}
+.why-block textarea{min-height:64px;resize:none;line-height:1.6}
+.field-label{font-size:12px;color:var(--ink-faint);letter-spacing:.16em;margin:14px 0 8px}
+.detail-meta{font-size:12px;color:var(--ink-faint);margin-top:14px;display:flex;justify-content:space-between;align-items:center}
+.detail-meta button{color:var(--danger);font-size:13px}
+.review-nav{display:flex;gap:10px;margin-top:16px}
+.review-nav button{flex:1;padding:11px;border-radius:12px;border:1px solid var(--line);color:var(--ink-dim);font-size:14.5px}
+.review-nav button.primary{background:var(--brass);color:#17161A;border-color:var(--brass);font-weight:500}
+
+/* collections */
+.coll-toggle-row{display:flex;flex-wrap:wrap;gap:8px}
+
+.coll-item{display:flex;align-items:center;justify-content:space-between;padding:14px 2px;border-bottom:1px solid var(--line)}
+.coll-item b{font-weight:500}
+.coll-item span{font-size:12.5px;color:var(--ink-faint)}
+.coll-item .row-del{font-style:normal;color:var(--danger);padding:2px 6px}
+.coll-new{display:flex;gap:8px;margin:14px 0 6px}
+.coll-new button{white-space:nowrap;color:var(--brass);border:1px solid var(--brass);border-radius:10px;padding:0 16px}
+
+.confirm-scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:70;display:none;align-items:center;justify-content:center;padding:32px}
+.confirm-scrim.show{display:flex}
+.confirm-box{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 20px 14px;max-width:320px;width:100%}
+.confirm-box p{font-size:14.5px;line-height:1.65}
+.confirm-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:16px}
+.confirm-actions button{padding:8px 16px;border-radius:10px;font-size:14.5px;color:var(--ink-dim)}
+.confirm-actions #confirmOk{color:var(--brass);font-weight:500}
+
+/* toast */
+.toast{position:fixed;left:50%;bottom:calc(96px + var(--safe-b));transform:translateX(-50%) translateY(12px);background:var(--surface2);border:1px solid var(--line);color:var(--ink);font-size:13.5px;padding:9px 18px;border-radius:22px;z-index:60;opacity:0;transition:.25s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+@media (min-width:640px){.grid{column-count:3}}
+@media (min-width:960px){.grid{column-count:4}main{max-width:1080px;margin:0 auto}}
+@media (prefers-reduced-motion:reduce){.sheet,.scrim,.toast{transition:none}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="head-row">
+    <div class="wordmark">暗 盒<small>OBSCURA · v0.11</small></div>
+    <div class="head-actions">
+      <button class="icon-btn" id="btnUndev" onclick="toggleUndev()">待显影 <span id="undevCount"></span></button>
+      <button class="icon-btn" onclick="openCollections()">灵感集</button>
+      <button class="icon-btn" onclick="openBackup()">⋯</button>
+    </div>
+  </div>
+  <div class="tool-row">
+    <input id="searchInput" type="search" placeholder="搜索收藏理由或标签" oninput="renderGrid()">
+    <button class="filter-btn" id="filterBtn" onclick="openFilter()">标签</button>
+  </div>
+  <div class="active-chips" id="activeChips"></div>
+</header>
+
+<div class="context-bar" id="contextBar">
+  <b id="contextName"></b>
+  <button onclick="exitCollection()">返回全部 ×</button>
+</div>
+
+<main><div class="grid" id="grid"></div><div id="emptyBox"></div></main>
+
+<button class="fab" onclick="pickFiles()" aria-label="添加图片">＋</button>
+<input type="file" id="fileInput" accept="image/*" multiple hidden>
+
+<div class="scrim" id="scrim" onclick="closeAllSheets()"></div>
+
+<!-- 筛选 sheet -->
+<div class="sheet" id="filterSheet">
+  <div class="sheet-head"><b>标签</b>
+    <span><button class="sheet-close" id="vocabEditBtn" onclick="toggleVocabEdit()">编辑词库</button><button class="sheet-close" onclick="clearFilters()">清空</button></span></div>
+  <div class="sheet-body" id="filterBody"></div>
+</div>
+
+<!-- 详情 / 显影 sheet -->
+<div class="sheet" id="detailSheet">
+  <div class="sheet-head"><b id="detailTitle">显影</b><button class="sheet-done" onclick="saveDetail(true)">完成</button></div>
+  <div class="sheet-body" id="detailBody"></div>
+</div>
+
+<!-- 灵感集 sheet -->
+<div class="sheet" id="collSheet">
+  <div class="sheet-head"><b>灵感集</b><span><button class="sheet-close" id="collEditBtn" onclick="toggleCollEdit()">编辑</button><button class="sheet-close" onclick="closeAllSheets()">关闭</button></span></div>
+  <div class="sheet-body" id="collBody"></div>
+</div>
+
+<!-- 备份 sheet -->
+<div class="sheet" id="backupSheet">
+  <div class="sheet-head"><b>数据</b><button class="sheet-close" onclick="closeAllSheets()">关闭</button></div>
+  <div class="sheet-body" id="backupBody"></div>
+</div>
+
+<!-- 裁剪 sheet -->
+<div class="sheet" id="cropSheet">
+  <div class="sheet-head"><b>裁剪</b>
+    <span><button class="sheet-close" onclick="cancelCrop()">取消</button><button class="sheet-done" onclick="applyCrop()">应用</button></span></div>
+  <div class="sheet-body">
+    <div class="crop-stage"><div class="crop-wrap">
+      <img id="cropImg" alt="">
+      <div class="crop-rect" id="cropRect">
+        <div class="crop-h" data-c="nw"></div><div class="crop-h" data-c="ne"></div>
+        <div class="crop-h" data-c="sw"></div><div class="crop-h" data-c="se"></div>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+<div class="confirm-scrim" id="confirmScrim">
+  <div class="confirm-box">
+    <p id="confirmMsg"></p>
+    <div class="confirm-actions"><button id="confirmNo">取消</button><button id="confirmOk">确定</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="restoreInput" accept="application/json" hidden>
+
+<script>
+/* ================= 数据层 ================= */
+const DIMS = ["吸引点","题材","天时","光线","色彩","构图","情绪","其他"];
+const DIM_LABEL = {"吸引点":"吸引我的地方"};
+const label = d => DIM_LABEL[d] || d;
+const DEFAULT_VOCAB = {
+  "吸引点":["创意","场景","姿势","妆造","构图","光影","调色"],
+  "题材":["街头","人像","风光","静物","建筑","纪实"],
+  "天时":["清晨","白天","黄昏","夜晚","晴","阴","雨","雪","室内"],
+  "光线":["逆光","侧光","顺光","柔光","硬光","窗光"],
+  "色彩":["冷调","暖调","黑白","低饱和","高饱和","单色"],
+  "构图":["对称","三分","引导线","留白","框式","特写","大远景"],
+  "情绪":["静谧","疏离","温暖","戏剧性","日常","孤独"],
+  "其他":[]
+};
+// 旧数据迁移:维度改名 + 词语归位
+const DIM_RENAME = {"用途":"吸引点","参考":"吸引点"};
+const TAG_MOVE = [ // [旧维度, 词, 新维度]
+  ["光线","夜景","天时"], ["光线","黄昏","天时"]
+];
+const TAG_RENAME = {"吸引点":{"姿势参考":"姿势","拍摄场地":"场景","场地":"场景","服装造型":"妆造","造型":"妆造","后期风格":"后期","光线方案":"光影"}};
+let db, photos = [], colls = [], urlCache = new Map();
+let vocab = JSON.parse(localStorage.getItem("anhe_vocab") || "null") || structuredClone(DEFAULT_VOCAB);
+
+function saveVocab(){ localStorage.setItem("anhe_vocab", JSON.stringify(vocab)); }
+function learnTag(dim, tag){
+  if(!vocab[dim]) vocab[dim] = [];
+  if(!vocab[dim].includes(tag)){ vocab[dim].push(tag); saveVocab(); }
+}
+
+function openDB(){
+  return new Promise((res, rej) => {
+    const req = indexedDB.open("anhe", 1);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      if(!d.objectStoreNames.contains("photos")) d.createObjectStore("photos", {keyPath:"id"});
+      if(!d.objectStoreNames.contains("colls"))  d.createObjectStore("colls",  {keyPath:"id"});
+    };
+    req.onsuccess = e => res(e.target.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+function tx(store, mode, fn){
+  return new Promise((res, rej) => {
+    const t = db.transaction(store, mode);
+    const r = fn(t.objectStore(store));
+    t.oncomplete = () => res(r && r.result !== undefined ? r.result : undefined);
+    t.onerror = () => rej(t.error);
+  });
+}
+async function loadAll(){
+  photos = await new Promise(res => {
+    const out = [];
+    db.transaction("photos").objectStore("photos").openCursor().onsuccess = e => {
+      const c = e.target.result;
+      if(c){ out.push(c.value); c.continue(); } else res(out);
+    };
+  });
+  colls = await new Promise(res => {
+    const out = [];
+    db.transaction("colls").objectStore("colls").openCursor().onsuccess = e => {
+      const c = e.target.result;
+      if(c){ out.push(c.value); c.continue(); } else res(out);
+    };
+  });
+  photos.sort((a,b) => b.createdAt - a.createdAt);
+}
+function migrateTags(obj){ // obj = {dim:[tags]},就地迁移,返回是否有改动
+  let changed = false;
+  for(const old in DIM_RENAME){
+    if(obj[old]){ const nw = DIM_RENAME[old];
+      obj[nw] = [...new Set([...(obj[nw]||[]), ...obj[old]])]; delete obj[old]; changed = true; }
+  }
+  for(const [from, tag, to] of TAG_MOVE){
+    const i = (obj[from]||[]).indexOf(tag);
+    if(i >= 0){ obj[from].splice(i,1); obj[to] = obj[to]||[]; if(!obj[to].includes(tag)) obj[to].push(tag); changed = true; }
+  }
+  for(const d in TAG_RENAME){
+    if(!obj[d]) continue;
+    obj[d] = [...new Set(obj[d].map(t => TAG_RENAME[d][t] || t))];
+  }
+  return changed;
+}
+async function migrateAll(){
+  migrateTags(vocab);
+  for(const d of DIMS) if(!vocab[d]) vocab[d] = [...(DEFAULT_VOCAB[d]||[])];
+  saveVocab();
+  for(const p of photos) if(migrateTags(p.tags)) await putPhoto(p);
+  for(const c of colls) if(!c.kind){ c.kind = "策划"; await putColl(c); }
+  // 把照片上的标签并入词库
+  photos.forEach(p => DIMS.forEach(d => (p.tags[d]||[]).forEach(t => learnTag(d,t))));
+}
+const putPhoto = p => tx("photos","readwrite", s => s.put(p));
+const delPhoto = id => tx("photos","readwrite", s => s.delete(id));
+const putColl  = c => tx("colls","readwrite", s => s.put(c));
+
+function urlOf(p){
+  if(!urlCache.has(p.id)) urlCache.set(p.id, URL.createObjectURL(p.blob));
+  return urlCache.get(p.id);
+}
+
+/* ================= 导入与压缩 ================= */
+function pickFiles(){ document.getElementById("fileInput").click(); }
+document.getElementById("fileInput").onchange = async e => {
+  const files = [...e.target.files];
+  e.target.value = "";
+  if(!files.length) return;
+  toast(`正在收入 ${files.length} 张…`);
+  const newIds = [];
+  for(const f of files){
+    try{
+      const full = await compress(f, 1600);            // 完整截图,识别与裁剪都基于它
+      const p = { id: crypto.randomUUID(), blob: full, note:"", origin:{author:"",platform:"",link:""}, place:"", tags:{}, colls:[], dev:false, detecting:true, createdAt: Date.now() };
+      await putPhoto(p);
+      photos.unshift(p);
+      newIds.push(p.id);
+    }catch(err){ console.error(err); toast("有一张没能读入:" + (err.message||err)); }
+  }
+  renderGrid(); updateUndevCount();
+  if(newIds.length){
+    toast(`已收入 ${newIds.length} 张,存入待显影`);
+    try{ reviewQueue = newIds; reviewIdx = 0; openDetail(newIds[0], true); }
+    catch(err){ console.error(err); toast("显影卡打开失败:" + (err.message||err)); }
+    for(const id of newIds) detectOrigin(id);
+  }
+};
+
+// 识别平台与作者(视觉);失败静默降级
+const DETECT_MODEL = "claude-sonnet-4-6";
+async function detectOrigin(id){
+  const p = photos.find(x => x.id === id); if(!p) return;
+  try{
+    const b64 = await blobToRawB64(p.orig || p.blob);
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        model: DETECT_MODEL, max_tokens: 200,
+        messages: [{ role:"user", content: [
+          { type:"image", source:{ type:"base64", media_type:"image/jpeg", data: b64 } },
+          { type:"text", text:'这是一张手机截图。判断它来自哪个内容平台(据界面版式,如小红书/微博/Instagram/Pinterest/图虫/Behance等),并找出发布者的用户名。只返回 JSON,不要解释:{"platform":"","author":""}。识别不出的字段留空字符串。' }
+        ]}]
+      })
+    });
+    const data = await res.json();
+    const txt = (data.content||[]).filter(x=>x.type==="text").map(x=>x.text).join("").replace(/```json|```/g,"").trim();
+    const got = JSON.parse(txt);
+    const cur = photos.find(x => x.id === id); if(!cur) return;
+    cur.origin = cur.origin || {author:"",platform:"",link:""};
+    if(got.platform && !cur.origin.platform) cur.origin.platform = got.platform;
+    if(got.author && !cur.origin.author) cur.origin.author = got.author;
+    delete cur.detecting;
+    await putPhoto(cur);
+    if(editing && editing.id === id){                 // 若正停在这张的显影卡,回填输入
+      if(got.platform && !editing.origin.platform) editing.origin.platform = got.platform;
+      if(got.author && !editing.origin.author) editing.origin.author = got.author;
+      const box = document.getElementById("originChips"); if(box) box.innerHTML = originChips();
+      const lbl = document.querySelector("#detailBody .detecting"); if(lbl) lbl.remove();
+    }
+    renderGrid();
+  }catch(err){
+    const cur = photos.find(x => x.id === id);
+    if(cur){ delete cur.detecting; await putPhoto(cur); }
+    console.warn("来源识别不可用(独立部署环境的预期行为):", err.message);
+  }
+}
+const blobToRawB64 = b => new Promise((res,rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(",")[1]); r.onerror = rej; r.readAsDataURL(b); });
+async function decodeImage(file){
+  if(window.createImageBitmap){
+    try{ return await createImageBitmap(file); }catch(e){ /* 走下一层 */ }
+  }
+  const dataUrl = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => rej(new Error("文件读取失败"));
+    r.readAsDataURL(file);
+  });
+  return await new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = () => rej(new Error("无法解码 " + (file.type || "未知格式") + (/hei[cf]/i.test(file.type) ? ",HEIC 请先在相册导出为 JPEG" : "")));
+    img.src = dataUrl;
+  });
+}
+async function compress(file, MAX = 1400){
+  const src = await decodeImage(file);
+  const sw = src.width || src.naturalWidth, sh = src.height || src.naturalHeight;
+  let w = sw, h = sh;
+  if(Math.max(w,h) > MAX){ const k = MAX/Math.max(w,h); w = Math.round(w*k); h = Math.round(h*k); }
+  const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+  cv.getContext("2d").drawImage(src, 0, 0, w, h);
+  if(src.close) src.close();
+  return await new Promise((res, rej) => cv.toBlob(b => b ? res(b) : rej(new Error("图片编码失败")), "image/jpeg", .82));
+}
+
+/* ================= 网格 ================= */
+let filters = {};            // {dim: Set(tags)}
+let authorFilter = null;
+let undevOnly = false;
+let contextColl = null;      // 灵感集视角
+
+function visiblePhotos(){
+  const q = document.getElementById("searchInput").value.trim().toLowerCase();
+  return photos.filter(p => {
+    if(contextColl && !(p.colls||[]).includes(contextColl)) return false;
+    if(authorFilter && (p.origin?.author||p.origin?.platform) !== authorFilter) return false;
+    if(undevOnly && p.dev) return false;
+    for(const d in filters)
+      for(const t of filters[d])
+        if(!(p.tags[d]||[]).includes(t)) return false;
+    if(q){
+      const o = p.origin || {};
+      const hay = (p.note + " " + (o.author||"") + " " + (o.platform||"") + " " + (o.link||"") + " " + (p.place||"") + " " + DIMS.map(d => (p.tags[d]||[]).join(" ")).join(" ")).toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+function originCardLine(p){
+  const o = p.origin || {};
+  const label = [o.author, o.platform].filter(Boolean).join(" · ");
+  if(label && o.link)
+    return `<a class="card-src" href="${esc(o.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(label)} ↗</a>`;
+  if(label)
+    return `<span class="card-src" onclick="event.stopPropagation();jumpAuthor('${esc(o.author||o.platform)}')">${esc(label)}</span>`;
+  if(o.link)
+    return `<a class="card-src" href="${esc(o.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">原网页 ↗</a>`;
+  return "";
+}
+function renderGrid(){
+  const list = visiblePhotos();
+  const grid = document.getElementById("grid");
+  grid.innerHTML = list.map(p => {
+    const prime = (p.tags["吸引点"]||[]).map(t => ({d:"吸引点", t}));
+    const rest  = DIMS.filter(d => d !== "吸引点").flatMap(d => (p.tags[d]||[]).map(t => ({d,t})));
+    const chip = (x, cls) => `<i class="${cls}" onclick="event.stopPropagation();jumpTag('${x.d}','${esc(x.t)}')">${esc(x.t)}</i>`;
+    return `<div class="card" onclick="openDetail('${p.id}')">
+      <img src="${urlOf(p)}" loading="lazy" alt="">
+      <div class="plaque">
+        ${p.note ? `<div class="note">${esc(p.note)}</div>` : ""}
+        ${(prime.length || rest.length) ? `<div class="tags">${[...prime.map(x=>chip(x,"pr")), ...rest.map(x=>chip(x,"oth"))].join(" · ")}</div>` : ""}
+        ${p.place ? `<a class="card-src" href="${mapUrl(p.place)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">◈ ${esc(p.place)}</a>` : ""}
+        ${originCardLine(p)}
+        ${p.dev ? "" : `<span class="badge-undev">待显影</span>`}
+      </div></div>`;
+  }).join("");
+  const empty = document.getElementById("emptyBox");
+  if(!photos.length){
+    empty.innerHTML = `<div class="empty"><div class="mark">暗 盒</div>
+      <p>收藏夹里的灵感散落各处。<br>把打动你的画面放进来,<br>写一句它为什么打动你。</p>
+      <button onclick="pickFiles()">收入第一张</button></div>`;
+  } else if(!list.length){
+    empty.innerHTML = `<div class="empty"><p>没有符合当前筛选的图。<br>换个组合,或清空筛选。</p></div>`;
+  } else empty.innerHTML = "";
+  renderActiveChips();
+}
+function renderActiveChips(){
+  const box = document.getElementById("activeChips");
+  const chips = [];
+  if(undevOnly) chips.push(`<button class="a-chip" onclick="toggleUndev()">待显影<span>×</span></button>`);
+  if(authorFilter) chips.push(`<button class="a-chip" onclick="clearAuthor()">${esc(authorFilter)}<span>×</span></button>`);
+  for(const d in filters) for(const t of filters[d])
+    chips.push(`<button class="a-chip" onclick="removeFilter('${d}','${esc(t)}')">${esc(t)}<span>×</span></button>`);
+  box.innerHTML = chips.join("");
+  const n = Object.values(filters).reduce((s,set)=>s+set.size,0) + (undevOnly?1:0) + (authorFilter?1:0);
+  document.getElementById("filterBtn").classList.toggle("active", n>0);
+  document.getElementById("btnUndev").classList.toggle("on", undevOnly);
+}
+function updateUndevCount(){
+  const n = photos.filter(p=>!p.dev).length;
+  document.getElementById("undevCount").textContent = n ? n : "";
+}
+function toggleUndev(){ undevOnly = !undevOnly; renderGrid(); }
+function jumpTag(d, t){
+  filters = { [d]: new Set([t]) };
+  undevOnly = false;
+  renderGrid();
+  window.scrollTo({top:0});
+}
+function removeFilter(d,t){ filters[d]?.delete(t); if(filters[d] && !filters[d].size) delete filters[d]; renderGrid(); renderFilterBody(); }
+function clearFilters(){ filters = {}; undevOnly = false; authorFilter = null; renderGrid(); renderFilterBody(); }
+function jumpAuthor(a){ if(!a) return; authorFilter = a; renderGrid(); window.scrollTo({top:0}); }
+function clearAuthor(){ authorFilter = null; renderGrid(); }
+
+/* ================= 筛选 sheet ================= */
+function openFilter(){ renderFilterBody(); showSheet("filterSheet"); }
+let vocabEdit = false;
+function toggleVocabEdit(){
+  vocabEdit = !vocabEdit;
+  document.getElementById("vocabEditBtn").textContent = vocabEdit ? "完成" : "编辑词库";
+  renderFilterBody();
+}
+function renderFilterBody(){
+  const pool = contextColl ? photos.filter(p => (p.colls||[]).includes(contextColl)) : photos;
+  const count = {};
+  pool.forEach(p => DIMS.forEach(d => (p.tags[d]||[]).forEach(t => {
+    count[d] = count[d] || {}; count[d][t] = (count[d][t]||0) + 1;
+  })));
+  const body = document.getElementById("filterBody");
+  const resetBar = vocabEdit
+    ? `<button class="reset-vocab" onclick="resetVocab('吸引点')">「吸引点」恢复默认顺序</button>` : "";
+  body.innerHTML = resetBar + DIMS.map(d => {
+    const tags = vocabEdit
+      ? [...(vocab[d]||[])]
+      : [...(vocab[d]||[])].sort((a,b) => (count[d]?.[b]||0) - (count[d]?.[a]||0));
+    if(!tags.length && !vocabEdit) return "";
+    const chips = vocabEdit
+      ? tags.map(t => `<button class="chip del" data-d="${d}" data-t="${esc(t)}">${esc(t)}<i class="x" onclick="event.stopPropagation();removeVocabTag('${d}','${esc(t)}')">×</i></button>`).join("")
+        + `<button class="chip add" onclick="addVocabInput('${d}',this)">＋</button>`
+      : tags.map(t => {
+          const n = count[d]?.[t] || 0;
+          return `<button class="chip ${filters[d]?.has(t)?"on":""} ${n?"":"zero"}" onclick="toggleFilter('${d}','${esc(t)}',this)">${esc(t)}${n?`<em>${n}</em>`:""}</button>`;
+        }).join("");
+    return `<div class="facet"><div class="facet-name">${label(d)}</div><div class="chips" id="fdim-${d}">${chips}</div></div>`;
+  }).join("");
+  if(vocabEdit) bindVocabDrag(body);
+}
+function setVocabOrder(d, order){
+  vocab[d] = order;
+  saveVocab();
+}
+function bindVocabDrag(root){
+  root.querySelectorAll(".chip.del").forEach(chip => {
+    chip.onpointerdown = e => {
+      if(e.target.classList.contains("x")) return;      // × 归删除
+      const d = chip.dataset.d;
+      const box = chip.parentElement;
+      let dragging = false;
+      const sx = e.clientX, sy = e.clientY;
+      chip.setPointerCapture(e.pointerId);
+      chip.onpointermove = ev => {
+        if(!dragging && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 8) return;
+        if(!dragging){ dragging = true; chip.classList.add("dragging"); }
+        ev.preventDefault();
+        chip.style.pointerEvents = "none";              // 让 elementFromPoint 看到底下
+        const under = document.elementFromPoint(ev.clientX, ev.clientY);
+        chip.style.pointerEvents = "";
+        const over = under && under.closest ? under.closest(".chip.del") : null;
+        if(over && over !== chip && over.dataset.d === d){
+          const r = over.getBoundingClientRect();
+          const before = ev.clientX < r.left + r.width/2;
+          box.insertBefore(chip, before ? over : over.nextSibling);
+        }
+      };
+      const end = () => {
+        chip.onpointermove = null; chip.onpointerup = null; chip.onpointercancel = null;
+        if(dragging){
+          chip.classList.remove("dragging");
+          const order = [...box.querySelectorAll(".chip.del")].map(el => el.dataset.t);
+          setVocabOrder(d, order);
+        }
+      };
+      chip.onpointerup = end; chip.onpointercancel = end;
+    };
+  });
+}
+async function resetVocab(d){
+  if(!await appConfirm(`把「${d}」恢复成默认顺序?你自己加过的词会保留在末尾,不会丢。`)) return;
+  const def = DEFAULT_VOCAB[d] || [];
+  const extra = (vocab[d]||[]).filter(t => !def.includes(t)); // 用户自造词
+  vocab[d] = [...def, ...extra];
+  saveVocab();
+  renderFilterBody();
+  toast("已恢复默认顺序");
+}
+async function removeVocabTag(d, t){
+  const used = photos.filter(p => (p.tags[d]||[]).includes(t));
+  if(used.length && !await appConfirm(`「${t}」还打在 ${used.length} 张图上,删词会同时从这些图上移除。继续?`)) return;
+  vocab[d] = (vocab[d]||[]).filter(x => x !== t); saveVocab();
+  for(const p of used){ p.tags[d] = p.tags[d].filter(x => x !== t); await putPhoto(p); }
+  filters[d]?.delete(t); if(filters[d] && !filters[d].size) delete filters[d];
+  renderFilterBody(); renderGrid();
+}
+function addVocabInput(d, btn){
+  const wrap = document.createElement("span"); wrap.className = "chip-input";
+  wrap.innerHTML = `<input placeholder="新词" enterkeyhint="done">`;
+  btn.replaceWith(wrap);
+  const inp = wrap.querySelector("input"); inp.focus();
+  const commit = () => { const t = inp.value.trim(); if(t) learnTag(d, t); renderFilterBody(); };
+  inp.onkeydown = e => { if(e.key === "Enter"){ e.preventDefault(); commit(); } };
+  inp.onblur = commit;
+}
+function toggleFilter(d,t,el){
+  filters[d] = filters[d] || new Set();
+  filters[d].has(t) ? filters[d].delete(t) : filters[d].add(t);
+  if(!filters[d].size) delete filters[d];
+  el.classList.toggle("on");
+  renderGrid();
+}
+
+/* ================= 详情 / 显影 ================= */
+let editing = null, reviewQueue = null, reviewIdx = 0;
+function openDetail(id, review = false){
+  const p = photos.find(x => x.id === id); if(!p) return;
+  editing = { id, note: p.note, place: p.place||"",
+    origin: { author: p.origin?.author || p.artist || "", platform: p.origin?.platform || "", link: p.origin?.link || p.source || "" },
+    tags: structuredClone(p.tags), colls: [...(p.colls||[])] };
+  if(!review) reviewQueue = null;
+  document.getElementById("detailTitle").innerHTML = review
+    ? `显影 <span class="sub">${reviewIdx+1} / ${reviewQueue.length}</span>` : "编辑";
+  renderDetailBody(p, review);
+  showSheet("detailSheet");
+}
+function renderDetailBody(p, review){
+  const body = document.getElementById("detailBody");
+  body.innerHTML = `
+    <img class="detail-img" id="detailImg" src="${urlOf(p)}" alt="">
+    <div class="img-tools">
+      <button class="src-btn" onclick="openCrop()">裁剪</button>
+      ${p.orig ? `<button class="src-btn" onclick="restoreOrig()">还原原图</button>` : ""}
+    </div>
+    <div class="why-block">
+      <div class="field-label brass">被什么打动</div>
+      <textarea id="noteInput">${esc(editing.note)}</textarea>
+      <div class="chips" style="margin-top:10px" id="dim-吸引点">${dimChips("吸引点")}</div>
+    </div>
+    <div class="field-label">来源${p.detecting ? ' <span class="detecting">识别中…</span>' : ''}</div>
+    <div class="src-row">
+      <input id="originInput" placeholder="作者 / 平台 / 链接" autocomplete="off" list="originList">
+      <button class="src-btn" onclick="pasteOrigin()">粘贴</button>
+    </div>
+    <datalist id="originList">${originOptions()}</datalist>
+    <div class="origin-chips" id="originChips">${originChips()}</div>
+    <div class="field-label">灵感集</div>
+    <div class="chips coll-toggle-row" id="collChips">${collChips()}</div>
+    <div class="hr"></div>
+    ${DIMS.filter(d => d !== "吸引点").map(d => `<div class="facet"><div class="facet-name">${label(d)}</div><div class="chips" id="dim-${d}">${dimChips(d)}</div></div>`).join("")}
+    <div class="field-label">地点</div>
+    <div class="src-row">
+      <input id="placeInput" value="${esc(editing.place)}">
+      <button class="src-btn" onclick="openPlace()">地图↗</button>
+    </div>
+    ${review ? `<div class="review-nav">
+        <button onclick="skipReview()">先跳过</button>
+        <button class="primary" onclick="saveDetail(false)">保存,下一张</button></div>` : ""}
+    <div class="detail-meta"><span>收入于 ${new Date(p.createdAt).toLocaleDateString("zh-CN")}</span>
+      <button onclick="removePhoto('${p.id}')">删除这张</button></div>`;
+  document.getElementById("noteInput").oninput = e => editing.note = e.target.value;
+  document.getElementById("placeInput").oninput = e => editing.place = e.target.value;
+  const oi = document.getElementById("originInput");
+  oi.onkeydown = e => { if(e.key === "Enter"){ e.preventDefault(); commitOrigin(oi.value); oi.value = ""; } };
+  oi.onblur = () => { if(oi.value.trim()){ commitOrigin(oi.value); oi.value = ""; } };
+}
+
+// 识别一段文本是链接 / 平台 / 作者
+const KNOWN_PLATFORMS = ["小红书","微博","instagram","ins","pinterest","behance","500px","图虫","flickr","x","twitter","巴士","lofter","站酷","视觉中国","unsplash","douyin","抖音","b站","bilibili","tumblr","vsco"];
+function classifyOrigin(raw){
+  const t = raw.trim();
+  if(!t) return null;
+  if(/^https?:\/\//i.test(t) || /^www\./i.test(t) || /\.[a-z]{2,}(\/|$)/i.test(t)) return "link";
+  const low = t.toLowerCase();
+  if(KNOWN_PLATFORMS.some(p => low === p || low.includes(p))) return "platform";
+  return "author";
+}
+function commitOrigin(raw){
+  const t = raw.trim(); if(!t) return;
+  const kind = classifyOrigin(t);
+  if(kind === "link") editing.origin.link = normUrl(t);
+  else if(kind === "platform") editing.origin.platform = t;
+  else editing.origin.author = t;
+  document.getElementById("originChips").innerHTML = originChips();
+}
+function clearOrigin(k){ editing.origin[k] = ""; document.getElementById("originChips").innerHTML = originChips(); }
+function originChips(){
+  const o = editing.origin, out = [];
+  if(o.author)   out.push(`<span class="o-chip"><b>作者</b>${esc(o.author)}<i onclick="clearOrigin('author')">×</i></span>`);
+  if(o.platform) out.push(`<span class="o-chip"><b>平台</b>${esc(o.platform)}<i onclick="clearOrigin('platform')">×</i></span>`);
+  if(o.link)     out.push(`<a class="o-chip link" href="${esc(o.link)}" target="_blank" rel="noopener"><b>链接</b>打开 ↗<i onclick="event.preventDefault();clearOrigin('link')">×</i></a>`);
+  return out.join("");
+}
+// 记忆:历史里出现过的作者与平台,供 datalist 联想
+function originOptions(){
+  const authors = photos.map(p => p.origin?.author).filter(Boolean);
+  const plats   = photos.map(p => p.origin?.platform).filter(Boolean);
+  return [...new Set([...plats, ...authors])].map(v => `<option value="${esc(v)}"></option>`).join("");
+}
+async function pasteOrigin(){
+  try{
+    const t = (await navigator.clipboard.readText()).trim();
+    if(!t) return toast("剪贴板是空的");
+    commitOrigin(t);
+  }catch(e){ toast("无法读取剪贴板"); }
+}
+function mapUrl(place){ return "https://maps.apple.com/?q=" + encodeURIComponent(place); }
+function openPlace(){
+  const v = editing.place.trim();
+  v ? window.open(mapUrl(v), "_blank") : toast("先填一个地点");
+}
+function normUrl(u){
+  u = (u||"").trim();
+  if(u && !/^https?:\/\//i.test(u)) u = "https://" + u;
+  return u;
+}
+function dimChips(d){
+  const mine = editing.tags[d]||[];
+  const all = [...new Set([...(vocab[d]||[]), ...mine])];
+  return all.map(t => `<button class="chip ${mine.includes(t)?"on":""}" onclick="toggleTag('${d}','${esc(t)}',this)">${esc(t)}</button>`).join("")
+    + `<button class="chip add" onclick="addTagInput('${d}',this)">＋</button>`;
+}
+function toggleTag(d,t,el){
+  editing.tags[d] = editing.tags[d]||[];
+  const i = editing.tags[d].indexOf(t);
+  i >= 0 ? editing.tags[d].splice(i,1) : editing.tags[d].push(t);
+  el.classList.toggle("on");
+}
+function addTagInput(d, btn){
+  const wrap = document.createElement("span"); wrap.className = "chip-input";
+  wrap.innerHTML = `<input placeholder="新标签" enterkeyhint="done">`;
+  btn.replaceWith(wrap);
+  const inp = wrap.querySelector("input"); inp.focus();
+  const commit = () => {
+    const t = inp.value.trim();
+    if(t){ learnTag(d,t); editing.tags[d] = editing.tags[d]||[]; if(!editing.tags[d].includes(t)) editing.tags[d].push(t); }
+    document.getElementById("dim-"+d).innerHTML = dimChips(d);
+  };
+  inp.onkeydown = e => { if(e.key === "Enter"){ e.preventDefault(); commit(); } };
+  inp.onblur = commit;
+}
+function collChips(){
+  return colls.map(c => `<button class="chip ${editing.colls.includes(c.id)?"on":""}" onclick="toggleCollOn('${c.id}',this)">${esc(c.name)}</button>`).join("")
+    + `<button class="chip add" onclick="newCollInline(this)">＋ 新灵感集</button>`;
+}
+function toggleCollOn(id, el){
+  const i = editing.colls.indexOf(id);
+  i >= 0 ? editing.colls.splice(i,1) : editing.colls.push(id);
+  el.classList.toggle("on");
+}
+function newCollInline(btn){
+  const wrap = document.createElement("span"); wrap.className = "chip-input";
+  wrap.innerHTML = `<input placeholder="灵感集名称" enterkeyhint="done">`;
+  btn.replaceWith(wrap);
+  const inp = wrap.querySelector("input"); inp.focus();
+  const commit = async () => {
+    const name = inp.value.trim();
+    if(name){
+      const c = {id: crypto.randomUUID(), name};
+      colls.push(c); await putColl(c);
+      editing.colls.push(c.id);
+    }
+    document.getElementById("collChips").innerHTML = collChips();
+  };
+  inp.onkeydown = e => { if(e.key === "Enter"){ e.preventDefault(); commit(); } };
+  inp.onblur = commit;
+}
+async function saveDetail(close){
+  if(!editing) return closeAllSheets();
+  const p = photos.find(x => x.id === editing.id);
+  if(p){
+    p.note = editing.note.trim();
+    const oi = document.getElementById("originInput");
+    if(oi && oi.value.trim()){ commitOrigin(oi.value); oi.value = ""; }
+    p.origin = { author: editing.origin.author.trim(), platform: editing.origin.platform.trim(), link: editing.origin.link.trim() };
+    delete p.source; delete p.artist;
+    p.place = editing.place.trim();
+    p.tags = editing.tags;
+    p.colls = editing.colls;
+    const hasContent = p.note || DIMS.some(d => (p.tags[d]||[]).length);
+    if(hasContent) p.dev = true;
+    await putPhoto(p);
+  }
+  advanceOrClose(close);
+}
+function skipReview(){ advanceOrClose(false); }
+function advanceOrClose(forceClose){
+  renderGrid(); updateUndevCount();
+  if(!forceClose && reviewQueue && reviewIdx < reviewQueue.length - 1){
+    reviewIdx++; openDetail(reviewQueue[reviewIdx], true);
+  } else { reviewQueue = null; closeAllSheets(); }
+}
+async function removePhoto(id){
+  if(!await appConfirm("删除这张图?不可恢复。")) return;
+  await delPhoto(id);
+  const u = urlCache.get(id); if(u){ URL.revokeObjectURL(u); urlCache.delete(id); }
+  photos = photos.filter(p => p.id !== id);
+  reviewQueue = null;
+  closeAllSheets(); renderGrid(); updateUndevCount();
+}
+
+/* ================= 灵感集 ================= */
+let collKinds = JSON.parse(localStorage.getItem("anhe_kinds") || "null") || ["想拍","策划"];
+const saveKinds = () => localStorage.setItem("anhe_kinds", JSON.stringify(collKinds));
+let newCollKind = collKinds[0];
+let collEdit = false;
+function toggleCollEdit(){
+  collEdit = !collEdit;
+  openCollections(true);
+}
+function openCollections(keep){
+  if(!keep) collEdit = false;
+  // 历史数据里出现过、但不在类别表中的 kind,并入
+  colls.forEach(c => { if(c.kind && !collKinds.includes(c.kind)){ collKinds.push(c.kind); saveKinds(); } });
+  if(!collKinds.includes(newCollKind)) newCollKind = collKinds[0];
+  const btn = document.getElementById("collEditBtn");
+  if(btn) btn.textContent = collEdit ? "完成" : "编辑";
+  const body = document.getElementById("collBody");
+  const kindChips = collKinds.map(k => collEdit
+    ? `<button class="chip del" onclick="removeKind('${esc(k)}')">${esc(k)} ×</button>`
+    : `<button class="chip ${newCollKind===k?"on":""}" onclick="setCollKind('${esc(k)}',this)">${esc(k)}</button>`
+  ).join("") + `<button class="chip add" onclick="addKindInput(this)">＋</button>`;
+  const group = kind => {
+    const items = colls.filter(c => (c.kind||collKinds[0]) === kind);
+    if(!items.length) return "";
+    return `<div class="facet-name" style="margin-top:16px">${esc(kind)}</div>` +
+      items.map(c => {
+        const n = photos.filter(p => (p.colls||[]).includes(c.id)).length;
+        return `<div class="coll-item" onclick="enterCollection('${c.id}')"><b>${esc(c.name)}</b><span>${n} 张 ${collEdit?`<i class="row-del" onclick="event.stopPropagation();removeColl('${c.id}')">×</i>`:"›"}</span></div>`;
+      }).join("");
+  };
+  body.innerHTML = `
+    <div class="chips" style="margin-bottom:10px">${kindChips}</div>
+    <div class="coll-new" style="margin-top:0"><input id="newCollName" enterkeyhint="done"><button onclick="createColl()">创建</button></div>
+    ${collKinds.map(group).join("")}`;
+  showSheet("collSheet");
+}
+function setCollKind(k, el){
+  newCollKind = k;
+  el.parentElement.querySelectorAll(".chip").forEach(c => c.classList.remove("on"));
+  el.classList.add("on");
+}
+function addKindInput(btn){
+  const wrap = document.createElement("span"); wrap.className = "chip-input";
+  wrap.innerHTML = `<input enterkeyhint="done">`;
+  btn.replaceWith(wrap);
+  const inp = wrap.querySelector("input"); inp.focus();
+  const commit = () => {
+    const k = inp.value.trim();
+    if(k && !collKinds.includes(k)){ collKinds.push(k); saveKinds(); newCollKind = k; }
+    openCollections(true);
+  };
+  inp.onkeydown = e => { if(e.key === "Enter"){ e.preventDefault(); commit(); } };
+  inp.onblur = commit;
+}
+async function removeKind(k){
+  if(collKinds.length <= 1) return toast("至少保留一个类别");
+  const inKind = colls.filter(c => (c.kind||collKinds[0]) === k);
+  const fallback = collKinds.find(x => x !== k);
+  if(!await appConfirm(inKind.length ? `删除类别「${k}」?其中 ${inKind.length} 个灵感集会归入「${fallback}」。` : `删除类别「${k}」?`)) return;
+  collKinds = collKinds.filter(x => x !== k); saveKinds();
+  for(const c of inKind){ c.kind = fallback; await putColl(c); }
+  if(newCollKind === k) newCollKind = collKinds[0];
+  openCollections(true);
+}
+async function createColl(){
+  const inp = document.getElementById("newCollName");
+  const name = inp.value.trim(); if(!name) return;
+  const c = {id: crypto.randomUUID(), name, kind: newCollKind};
+  colls.push(c); await putColl(c);
+  openCollections(true);
+}
+async function removeColl(id){
+  const c = colls.find(x => x.id === id); if(!c) return;
+  const used = photos.filter(p => (p.colls||[]).includes(id));
+  if(!await appConfirm(used.length ? `删除「${c.name}」?${used.length} 张图会从这个灵感集移出,图本身不删。` : `删除「${c.name}」?`)) return;
+  colls = colls.filter(x => x.id !== id);
+  await tx("colls","readwrite", s => s.delete(id));
+  for(const p of used){ p.colls = p.colls.filter(x => x !== id); await putPhoto(p); }
+  if(contextColl === id) exitCollection();
+  openCollections(true); renderGrid();
+}
+function enterCollection(id){
+  contextColl = id;
+  const c = colls.find(x => x.id === id);
+  document.getElementById("contextName").textContent = c ? c.name : "";
+  document.getElementById("contextBar").classList.add("show");
+  closeAllSheets(); renderGrid();
+}
+function exitCollection(){
+  contextColl = null;
+  document.getElementById("contextBar").classList.remove("show");
+  renderGrid();
+}
+
+/* ================= 备份 ================= */
+function openBackup(){
+  document.getElementById("backupBody").innerHTML = `
+    <p style="font-size:13px;color:var(--ink-dim);margin-bottom:14px">全部数据只存在这台设备的浏览器里。换设备或怕丢,先导出一份。</p>
+    <div class="review-nav" style="margin-top:0">
+      <button class="primary" onclick="exportZip()">导出图库 (ZIP)</button>
+    </div>
+    <p style="font-size:12px;color:var(--ink-faint);margin:8px 0 14px">图片 + 可直接打开的清单(HTML/CSV),给任何人、任何设备</p>
+    <div class="review-nav" style="margin-top:0">
+      <button onclick="exportAll()">导出备份 (JSON)</button>
+      <button onclick="document.getElementById('restoreInput').click()">导入备份</button>
+    </div>
+    <p style="font-size:12px;color:var(--ink-faint);margin:8px 0 0">JSON 用于迁移回暗盒,可完整恢复</p>
+    <p style="font-size:12px;color:var(--ink-faint);margin-top:14px">共 ${photos.length} 张图 · ${colls.length} 个灵感集</p>`;
+  showSheet("backupSheet");
+}
+const blobToB64 = b => new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(b); });
+
+/* ---- 纯 JS ZIP(仅存储):零依赖,离线可用 ---- */
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for(let n = 0; n < 256; n++){
+    let c = n;
+    for(let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(u8){
+  let c = 0xFFFFFFFF;
+  for(let i = 0; i < u8.length; i++) c = CRC_TABLE[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function buildZip(entries){ // entries: [{name, data:Uint8Array}]
+  const enc = new TextEncoder();
+  const parts = [], central = [];
+  let offset = 0;
+  const d = new Date();
+  const dosTime = ((d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)) & 0xFFFF;
+  const dosDate = (((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate()) & 0xFFFF;
+  const u16 = v => new Uint8Array([v & 0xFF, (v >>> 8) & 0xFF]);
+  const u32 = v => new Uint8Array([v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF]);
+  for(const e of entries){
+    const name = enc.encode(e.name);
+    const crc = crc32(e.data), sz = e.data.length;
+    const local = [u32(0x04034b50), u16(20), u16(0x0800), u16(0), u16(dosTime), u16(dosDate),
+      u32(crc), u32(sz), u32(sz), u16(name.length), u16(0), name, e.data];
+    const localLen = 30 + name.length + sz;
+    parts.push(...local);
+    central.push({name, crc, sz, offset});
+    offset += localLen;
+  }
+  const cdStart = offset;
+  for(const c of central){
+    parts.push(u32(0x02014b50), u16(20), u16(20), u16(0x0800), u16(0), u16(dosTime), u16(dosDate),
+      u32(c.crc), u32(c.sz), u32(c.sz), u16(c.name.length), u16(0), u16(0), u16(0), u16(0),
+      u32(0), u32(c.offset), c.name);
+    offset += 46 + c.name.length;
+  }
+  parts.push(u32(0x06054b50), u16(0), u16(0), u16(central.length), u16(central.length),
+    u32(offset - cdStart), u32(cdStart), u16(0));
+  return new Blob(parts, {type: "application/zip"});
+}
+
+/* ---- 摄影师可读导出:图片 + HTML 清单 + CSV ---- */
+const cleanName = s => (s||"").replace(/[\\/:*?"<>|\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 16);
+async function exportZip(){
+  if(!photos.length) return toast("暗盒还是空的");
+  toast("正在打包…");
+  try{
+    const list = photos.slice().sort((a,b) => a.createdAt - b.createdAt);
+    const enc = new TextEncoder();
+    const entries = [], rows = [], cards = [];
+    rows.push(["文件名","收入日期","被什么打动",...DIMS,"作者","平台","链接","地点","灵感集"]);
+    let i = 0;
+    for(const p of list){
+      i++;
+      const num = String(i).padStart(3, "0");
+      const slug = cleanName(p.note);
+      const fname = `images/${num}${slug ? "-" + slug : ""}.jpg`;
+      entries.push({name: fname, data: new Uint8Array(await p.blob.arrayBuffer())});
+      const o = p.origin || {};
+      const collNames = (p.colls||[]).map(id => (colls.find(c => c.id === id)||{}).name).filter(Boolean);
+      const date = new Date(p.createdAt).toLocaleDateString("zh-CN");
+      rows.push([fname, date, p.note||"", ...DIMS.map(d => (p.tags[d]||[]).join(" ")),
+        o.author||"", o.platform||"", o.link||"", p.place||"", collNames.join(" ")]);
+      const tagLine = DIMS.flatMap(d => p.tags[d]||[]).map(esc).join(" · ");
+      const srcLine = [o.author, o.platform].filter(Boolean).map(esc).join(" · ");
+      cards.push(`<figure><img src="${fname}" loading="lazy"><figcaption>
+        ${p.note ? `<p class="n">${esc(p.note)}</p>` : ""}
+        ${tagLine ? `<p class="t">${tagLine}</p>` : ""}
+        <p class="m">${[srcLine, esc(p.place||""), date].filter(Boolean).join(" · ")}</p>
+      </figcaption></figure>`);
+    }
+    const today = new Date().toLocaleDateString("zh-CN");
+    const manifest = `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>暗盒 · 导出清单</title><style>
+body{background:#17161A;color:#EDEAE4;font-family:-apple-system,"PingFang SC",sans-serif;margin:0;padding:28px 16px}
+h1{font-family:"Songti SC",serif;font-weight:600;letter-spacing:.14em;font-size:22px}
+h1 small{font-size:12px;color:#6B6862;letter-spacing:.04em;margin-left:10px}
+main{column-count:2;column-gap:12px;margin-top:20px}
+@media(min-width:700px){main{column-count:3}}@media(min-width:1100px){main{column-count:4}}
+figure{break-inside:avoid;margin:0 0 12px;background:#201F24;border:1px solid #2E2D33;border-radius:12px;overflow:hidden}
+img{width:100%;display:block}figcaption{padding:9px 11px 11px;font-size:12.5px;line-height:1.55}
+.n{margin:0 0 5px}.t{margin:0 0 5px;color:#C9A96B;font-size:11.5px}.m{margin:0;color:#6B6862;font-size:11px}
+</style></head><body><h1>暗 盒<small>${list.length} 张 · 导出于 ${today}</small></h1><main>${cards.join("")}</main></body></html>`;
+    entries.push({name: "清单.html", data: enc.encode(manifest)});
+    const csv = "\uFEFF" + rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\r\n");
+    entries.push({name: "清单.csv", data: enc.encode(csv)});
+    const zip = buildZip(entries);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(zip);
+    a.download = `anhe-${new Date().toISOString().slice(0,10)}.zip`;
+    a.click();
+    toast(`已导出 ${list.length} 张`);
+  }catch(err){ console.error(err); toast("打包失败:" + (err.message||err)); }
+}
+async function exportAll(){
+  toast("正在打包…");
+  const out = { v:1, colls, vocab, photos: [] };
+  for(const p of photos){
+    const rec = {...p, blob: await blobToB64(p.blob)};
+    if(p.orig) rec.orig = await blobToB64(p.orig);
+    out.photos.push(rec);
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(out)], {type:"application/json"}));
+  a.download = `anhe-backup-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  toast("已导出");
+}
+document.getElementById("restoreInput").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if(!f) return;
+  try{
+    const data = JSON.parse(await f.text());
+    for(const c of (data.colls||[])) if(!colls.find(x=>x.id===c.id)){ colls.push(c); await putColl(c); }
+    if(data.vocab){ for(const d of DIMS) vocab[d] = [...new Set([...(vocab[d]||[]), ...(data.vocab[d]||[])])]; saveVocab(); }
+    let n = 0;
+    for(const rp of (data.photos||[])){
+      if(photos.find(x => x.id === rp.id)) continue;
+      const blob = await (await fetch(rp.blob)).blob();
+      const p = {...rp, blob};
+      if(rp.orig) p.orig = await (await fetch(rp.orig)).blob();
+      await putPhoto(p); photos.push(p); n++;
+    }
+    photos.sort((a,b) => b.createdAt - a.createdAt);
+    closeAllSheets(); renderGrid(); updateUndevCount();
+    toast(`已恢复 ${n} 张`);
+  }catch(err){ toast("备份文件无法读取"); console.error(err); }
+};
+
+/* ================= 裁剪(非破坏,原图保留) ================= */
+let cropState = null, cropDrag = null;
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+function openCrop(){
+  const p = photos.find(x => x.id === editing.id); if(!p) return;
+  const srcBlob = p.orig || p.blob;               // 永远从原图裁,可反复调整
+  const url = URL.createObjectURL(srcBlob);
+  const img = document.getElementById("cropImg");
+  img.onload = () => requestAnimationFrame(() => {
+    const r = img.getBoundingClientRect();
+    cropState = { pid: p.id, url,
+      natW: img.naturalWidth, natH: img.naturalHeight,
+      dispW: r.width, dispH: r.height,
+      rect: { x: 0, y: 0, w: r.width, h: r.height } };
+    layoutCropRect();
+  });
+  img.src = url;
+  showSheet("cropSheet");
+}
+function layoutCropRect(){
+  const el = document.getElementById("cropRect"), r = cropState.rect;
+  el.style.left = r.x+"px"; el.style.top = r.y+"px";
+  el.style.width = r.w+"px"; el.style.height = r.h+"px";
+}
+(function bindCrop(){
+  const cr = document.getElementById("cropRect");
+  cr.addEventListener("pointerdown", e => {
+    if(!cropState) return;
+    cropDrag = { c: e.target.dataset.c || "move", sx: e.clientX, sy: e.clientY, rect: {...cropState.rect} };
+    cr.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  cr.addEventListener("pointermove", e => {
+    if(!cropDrag || !cropState) return;
+    const dx = e.clientX - cropDrag.sx, dy = e.clientY - cropDrag.sy;
+    const o = cropDrag.rect, W = cropState.dispW, H = cropState.dispH, MIN = 44;
+    const R = {...o};
+    if(cropDrag.c === "move"){
+      R.x = clamp(o.x + dx, 0, W - o.w);
+      R.y = clamp(o.y + dy, 0, H - o.h);
+    } else {
+      if(cropDrag.c.includes("w")){ const nx = clamp(o.x + dx, 0, o.x + o.w - MIN); R.w = o.x + o.w - nx; R.x = nx; }
+      if(cropDrag.c.includes("e")){ R.w = clamp(o.w + dx, MIN, W - o.x); }
+      if(cropDrag.c.includes("n")){ const ny = clamp(o.y + dy, 0, o.y + o.h - MIN); R.h = o.y + o.h - ny; R.y = ny; }
+      if(cropDrag.c.includes("s")){ R.h = clamp(o.h + dy, MIN, H - o.y); }
+    }
+    cropState.rect = R; layoutCropRect();
+  });
+  const end = () => cropDrag = null;
+  cr.addEventListener("pointerup", end);
+  cr.addEventListener("pointercancel", end);
+})();
+async function applyCrop(){
+  const s = cropState; if(!s) return;
+  const p = photos.find(x => x.id === s.pid); if(!p) return;
+  const img = document.getElementById("cropImg");
+  const k = s.natW / s.dispW;
+  const sx = s.rect.x*k, sy = s.rect.y*k, sw = Math.max(1, s.rect.w*k), sh = Math.max(1, s.rect.h*k);
+  const cv = document.createElement("canvas");
+  cv.width = Math.round(sw); cv.height = Math.round(sh);
+  cv.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
+  const blob = await new Promise(r => cv.toBlob(r, "image/jpeg", .88));
+  if(!blob) return toast("裁剪失败");
+  if(!p.orig) p.orig = p.blob;
+  p.blob = blob;
+  await putPhoto(p);
+  const old = urlCache.get(p.id); if(old){ URL.revokeObjectURL(old); urlCache.delete(p.id); }
+  endCrop();
+  renderGrid();
+  returnToDetail();
+}
+function restoreOrig(){
+  const p = photos.find(x => x.id === editing.id);
+  if(!p || !p.orig) return;
+  p.blob = p.orig; delete p.orig;
+  putPhoto(p);
+  const old = urlCache.get(p.id); if(old){ URL.revokeObjectURL(old); urlCache.delete(p.id); }
+  renderGrid();
+  returnToDetail();
+}
+function cancelCrop(){ endCrop(); returnToDetail(); }
+function endCrop(){
+  if(cropState){ URL.revokeObjectURL(cropState.url); cropState = null; }
+  document.getElementById("cropImg").removeAttribute("src");
+}
+function returnToDetail(){
+  const p = photos.find(x => x.id === editing.id);
+  if(!p) return closeAllSheets();
+  renderDetailBody(p, !!reviewQueue);
+  showSheet("detailSheet");
+}
+
+/* ================= 通用 ================= */
+function appConfirm(msg){
+  return new Promise(res => {
+    const scrim = document.getElementById("confirmScrim");
+    document.getElementById("confirmMsg").textContent = msg;
+    scrim.classList.add("show");
+    const done = v => { scrim.classList.remove("show"); res(v); };
+    document.getElementById("confirmOk").onclick = () => done(true);
+    document.getElementById("confirmNo").onclick = () => done(false);
+  });
+}
+function esc(s){ return String(s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
+function showSheet(id){
+  closeAllSheets(true);
+  document.getElementById("scrim").classList.add("show");
+  document.getElementById(id).classList.add("show");
+}
+function closeAllSheets(keepScrim){
+  document.querySelectorAll(".sheet").forEach(s => s.classList.remove("show"));
+  if(!keepScrim) document.getElementById("scrim").classList.remove("show");
+}
+let toastTimer;
+function toast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+(async function init(){
+  db = await openDB();
+  await loadAll();
+  await migrateAll();
+  renderGrid(); updateUndevCount();
+})();
+</script>
+</body>
+</html>
