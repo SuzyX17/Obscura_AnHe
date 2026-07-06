@@ -68,8 +68,9 @@ main{padding:12px 12px calc(96px + var(--safe-b))}
 .f-chip em{font-style:normal;font-size:11px;color:var(--ink-faint)}
 .f-chip.add{border-style:dashed;color:var(--ink-faint)}
 .grid{column-count:2;column-gap:10px}
-.card{break-inside:avoid;margin-bottom:10px;background:var(--surface);border-radius:var(--radius);overflow:hidden;border:1px solid var(--line)}
+.card{position:relative;break-inside:avoid;margin-bottom:10px;background:var(--surface);border-radius:var(--radius);overflow:hidden;border:1px solid var(--line)}
 .card img{width:100%;display:block;background:var(--surface2)}
+.link-badge{position:absolute;top:8px;right:8px;display:flex;align-items:center;gap:3px;font-size:10.5px;color:var(--ink);background:rgba(23,22,26,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.14);border-radius:11px;padding:2px 8px 2px 6px;pointer-events:none}
 .card .plaque{padding:8px 10px 9px}
 .card .note{font-size:12.5px;color:var(--ink);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .card .note.empty{color:var(--ink-faint);font-style:normal}
@@ -87,6 +88,11 @@ main{padding:12px 12px calc(96px + var(--safe-b))}
 /* ---------- FAB ---------- */
 .fab{position:fixed;right:18px;bottom:calc(22px + var(--safe-b));z-index:25;width:56px;height:56px;border-radius:50%;background:var(--brass);color:#17161A;font-size:26px;font-weight:300;box-shadow:0 6px 20px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}
 .fab:active{transform:scale(.94)}
+.fab-link{position:fixed;right:24px;bottom:calc(86px + var(--safe-b));z-index:25;width:44px;height:44px;border-radius:50%;background:var(--surface2);border:1px solid var(--line);color:var(--ink-dim);font-size:19px;box-shadow:0 4px 14px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center}
+.fab-link:active{transform:scale(.94)}
+.cover-pick{display:block;width:100%;min-height:52px;border:1px dashed var(--line);border-radius:12px;color:var(--ink-faint);font-size:14px;padding:14px;background:var(--surface2);text-align:center}
+.cover-pick img{display:block;width:100%;border-radius:8px}
+.cover-pick:has(img){padding:6px}
 
 /* ---------- sheets ---------- */
 .scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:40;opacity:0;pointer-events:none;transition:opacity .22s}
@@ -196,7 +202,7 @@ main{padding:12px 12px calc(96px + var(--safe-b))}
 
 <header>
   <div class="head-row">
-    <div class="wordmark">暗 盒<small>OBSCURA · v0.16</small></div>
+    <div class="wordmark">暗 盒<small>OBSCURA · v0.17</small></div>
     <div class="head-actions">
       <button class="icon-btn" id="btnUndev" onclick="toggleUndev()">待显影 <span id="undevCount"></span></button>
       <button class="icon-btn" onclick="openCollections()">灵感集</button>
@@ -218,8 +224,10 @@ main{padding:12px 12px calc(96px + var(--safe-b))}
 
 <main><div class="set-bar" id="setBar"></div><div class="grid" id="grid"></div><div id="emptyBox"></div></main>
 
+<button class="fab-link" onclick="openLinkSheet()" aria-label="收入链接">🔗</button>
 <button class="fab" onclick="pickFiles()" aria-label="添加图片">＋</button>
 <input type="file" id="fileInput" accept="image/*" multiple hidden>
+<input type="file" id="coverInput" accept="image/*" hidden>
 
 <div class="scrim" id="scrim" onclick="closeAllSheets()"></div>
 
@@ -252,6 +260,24 @@ main{padding:12px 12px calc(96px + var(--safe-b))}
 <div class="sheet" id="backupSheet">
   <div class="sheet-head"><b>数据</b><button class="sheet-close" onclick="closeAllSheets()">关闭</button></div>
   <div class="sheet-body" id="backupBody"></div>
+</div>
+
+<!-- 收入链接 sheet -->
+<div class="sheet" id="linkSheet">
+  <div class="sheet-head"><b>收入链接</b>
+    <span><button class="sheet-close" onclick="closeAllSheets()">取消</button><button class="sheet-done" onclick="saveLinkCard()">存入</button></span></div>
+  <div class="sheet-body">
+    <div class="src-row">
+      <input id="linkUrl" placeholder="粘贴帖子链接" inputmode="url" autocomplete="off" oninput="onLinkInput()">
+      <button class="src-btn" onclick="pasteLink()">粘贴</button>
+    </div>
+    <div class="origin-chips" id="linkPlat"></div>
+    <div class="field-label">标题</div>
+    <input id="linkTitle" placeholder="原帖标题(可留空)">
+    <div class="field-label">封面</div>
+    <button class="cover-pick" id="coverPick" onclick="pickCover()">＋ 存一张封面截图</button>
+    <p style="font-size:12px;color:var(--ink-faint);margin-top:10px">不贴封面就用平台占位图。存好后可在卡片里补图、打标签、归入文件夹。</p>
+  </div>
 </div>
 
 <!-- 裁剪 sheet -->
@@ -568,7 +594,7 @@ function visiblePhotos(){
         if(!(eff[d]||[]).includes(t)) return false;
     if(q){
       const o = p.origin || {};
-      const hay = (p.note + " " + (o.author||"") + " " + (o.role||"") + " " + (o.platform||"") + " " + (o.link||"") + " " + (p.place||"") + " " + (p.sets||[]).map(id => setPath(id)).join(" ") + " " + DIMS.map(d => (eff[d]||[]).join(" ")).join(" ")).toLowerCase();
+      const hay = (p.note + " " + (p.title||"") + " " + (o.author||"") + " " + (o.role||"") + " " + (o.platform||"") + " " + (o.link||"") + " " + (p.place||"") + " " + (p.sets||[]).map(id => setPath(id)).join(" ") + " " + DIMS.map(d => (eff[d]||[]).join(" ")).join(" ")).toLowerCase();
       if(!hay.includes(q)) return false;
     }
     return true;
@@ -650,7 +676,9 @@ function renderGrid(){
     const chip = (x, cls) => `<i class="${cls}" onclick="event.stopPropagation();jumpTag('${x.d}','${esc(x.t)}')">${esc(x.t)}</i>`;
     return `<div class="card" onclick="openDetail('${p.id}')">
       <img src="${urlOf(p)}" loading="lazy" alt="">
+      ${p.kind === "link" ? `<span class="link-badge">🔗 ${esc(p.origin?.platform || "链接")}</span>` : ""}
       <div class="plaque">
+        ${p.kind === "link" && p.title ? `<div class="note">${esc(p.title)}</div>` : ""}
         ${p.note ? `<div class="note">${esc(p.note)}</div>` : ""}
         ${(prime.length || rest.length) ? `<div class="tags">${[...prime.map(x=>chip(x,"pr")), ...rest.map(x=>chip(x,"oth"))].join(" · ")}</div>` : ""}
         ${p.place ? `<a class="card-src" href="${mapUrl(p.place)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">◈ ${esc(p.place)}</a>` : ""}
@@ -855,7 +883,7 @@ function toggleFilter(d,t,el){
 let editing = null, reviewQueue = null, reviewIdx = 0;
 function openDetail(id, review = false){
   const p = photos.find(x => x.id === id); if(!p) return;
-  editing = { id, note: p.note, place: p.place||"",
+  editing = { id, kind: p.kind, title: p.title || "", note: p.note, place: p.place||"",
     origin: { author: p.origin?.author || p.artist || "", platform: p.origin?.platform || "", link: p.origin?.link || p.source || "", role: p.origin?.role || "" },
     tags: structuredClone(p.tags), colls: [...(p.colls||[])], sets: [...(p.sets||[])] };
   if(!review) reviewQueue = null;
@@ -869,10 +897,12 @@ function renderDetailBody(p, review){
   body.innerHTML = `
     <img class="detail-img" id="detailImg" src="${urlOf(p)}" alt="">
     <div class="img-tools">
+      ${p.kind === "link" ? `<button class="src-btn" onclick="replaceCover('${p.id}')">换封面</button>` : ""}
       <button class="src-btn" onclick="openCrop()">裁剪</button>
       <button class="src-btn" onclick="sharePhoto()">分享</button>
       ${p.orig ? `<button class="src-btn" onclick="restoreOrig()">还原原图</button>` : ""}
     </div>
+    ${p.kind === "link" ? `<div class="field-label">标题</div><input id="titleInput" value="${esc(editing.title)}">` : ""}
     <div class="why-block">
       <div class="field-label brass">被什么打动</div>
       <textarea id="noteInput">${esc(editing.note)}</textarea>
@@ -903,6 +933,7 @@ function renderDetailBody(p, review){
       <button onclick="removePhoto('${p.id}')">删除这张</button></div>`;
   document.getElementById("noteInput").oninput = e => editing.note = e.target.value;
   document.getElementById("placeInput").oninput = e => editing.place = e.target.value;
+  const ti = document.getElementById("titleInput"); if(ti) ti.oninput = e => editing.title = e.target.value;
   const oi = document.getElementById("originInput");
   oi.onkeydown = e => { if(e.key === "Enter"){ e.preventDefault(); commitOrigin(oi.value); oi.value = ""; } };
   oi.onblur = () => { if(oi.value.trim()){ commitOrigin(oi.value); oi.value = ""; } };
@@ -990,6 +1021,101 @@ function normUrl(u){
   u = (u||"").trim();
   if(u && !/^https?:\/\//i.test(u)) u = "https://" + u;
   return u;
+}
+
+/* ---- 收入链接:外链参考卡(封面/标题可留空,靠 origin.link 标识可跳转) ---- */
+let linkDraft = { url:"", platform:"", coverBlob:null };
+let coverTarget = "draft";      // "draft" = 新卡封面;否则为要换封面的 photo id
+function openLinkSheet(){
+  linkDraft = { url:"", platform:"", coverBlob:null };
+  coverTarget = "draft";
+  document.getElementById("linkUrl").value = "";
+  document.getElementById("linkTitle").value = "";
+  document.getElementById("linkPlat").innerHTML = "";
+  document.getElementById("coverPick").innerHTML = "＋ 存一张封面截图";
+  showSheet("linkSheet");
+}
+async function pasteLink(){
+  try{
+    const t = (await navigator.clipboard.readText()).trim();
+    if(!t) return toast("剪贴板是空的");
+    applyPastedLink(t);
+  }catch(e){ toast("读不到剪贴板,直接粘到输入框即可"); }
+}
+// 从"复制链接"文本里拆出网址与标题(小红书/抖音等常把标题+网址+推广语一起复制)
+function applyPastedLink(t){
+  const m = t.match(/https?:\/\/[^\s]+/i);
+  const url = m ? m[0] : t;
+  document.getElementById("linkUrl").value = url;
+  if(m){
+    const title = t.replace(m[0], " ")
+      .replace(/(复制本条信息|打开|查看精彩内容|下载|长按复制|点击链接|App|APP)[^\n]*/gi, " ")
+      .replace(/[【】\[\]、，,。!！]/g, " ").replace(/\s+/g, " ").trim();
+    const ti = document.getElementById("linkTitle");
+    if(title && title.length <= 60 && !ti.value.trim()) ti.value = title;
+  }
+  onLinkInput();
+}
+function onLinkInput(){
+  linkDraft.url = normUrl(document.getElementById("linkUrl").value);
+  linkDraft.platform = linkDraft.url ? platformFromLink(linkDraft.url) : "";
+  document.getElementById("linkPlat").innerHTML =
+    linkDraft.platform ? `<span class="o-chip"><b>平台</b>${esc(linkDraft.platform)}</span>` : "";
+}
+function pickCover(){ coverTarget = "draft"; document.getElementById("coverInput").click(); }
+function replaceCover(id){ coverTarget = id; document.getElementById("coverInput").click(); }
+document.getElementById("coverInput").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if(!f) return;
+  try{
+    const blob = await compress(f, 1600);
+    if(coverTarget === "draft"){
+      linkDraft.coverBlob = blob;
+      document.getElementById("coverPick").innerHTML = `<img src="${URL.createObjectURL(blob)}" alt="">`;
+    }else{
+      const p = photos.find(x => x.id === coverTarget); if(!p) return;
+      if(urlCache.has(p.id)){ URL.revokeObjectURL(urlCache.get(p.id)); urlCache.delete(p.id); }
+      delete p.orig; p.blob = blob;
+      await putPhoto(p);
+      renderGrid();
+      if(editing && editing.id === p.id) renderDetailBody(p, false);
+      toast("封面已更换");
+    }
+  }catch(err){ toast("这张图没能读入:" + (err.message||err)); }
+};
+// 没有封面截图时,画一张占位封面(平台名 + 跳转提示),使卡片不空
+function makeLinkCover(platform){
+  const W = 1000, H = 750, cv = document.createElement("canvas");
+  cv.width = W; cv.height = H;
+  const x = cv.getContext("2d");
+  x.fillStyle = "#201F24"; x.fillRect(0, 0, W, H);
+  x.strokeStyle = "#2E2D33"; x.lineWidth = 2; x.strokeRect(40, 40, W-80, H-80);
+  x.textAlign = "center"; x.textBaseline = "middle";
+  x.font = "72px -apple-system,'PingFang SC',sans-serif";
+  x.fillText("🔗", W/2, H/2 - 96);
+  x.fillStyle = "#C9A96B";
+  x.font = "600 66px 'Songti SC','STSong',serif";
+  x.fillText(platform || "外链", W/2, H/2 + 18);
+  x.fillStyle = "#6B6862";
+  x.font = "30px -apple-system,'PingFang SC',sans-serif";
+  x.fillText("原帖 · 点开卡片跳转", W/2, H/2 + 94);
+  return new Promise(res => cv.toBlob(b => res(b), "image/jpeg", .85));
+}
+async function saveLinkCard(){
+  const url = normUrl(document.getElementById("linkUrl").value);
+  if(!url) return toast("先粘贴一个链接");
+  const title = document.getElementById("linkTitle").value.trim();
+  const platform = linkDraft.platform || "";
+  const cover = linkDraft.coverBlob || await makeLinkCover(platform);
+  const p = { id: crypto.randomUUID(), kind:"link", blob: cover, title, note:"",
+    origin:{ author:"", platform, link:url }, place:"", tags:{},
+    colls: contextColl ? [contextColl] : [], sets: contextSet ? [contextSet] : [],
+    dev:true, createdAt: Date.now() };
+  await putPhoto(p);
+  photos.unshift(p);
+  closeAllSheets();
+  renderGrid(); updateUndevCount();
+  toast(title ? "已收入:" + title : "链接已收入照片集");
 }
 // 当前编辑照片从所属文件夹(含各级上级)继承到的统一标签
 function inheritedTags(d){
@@ -1102,7 +1228,8 @@ async function saveDetail(close){
     p.tags = editing.tags;
     p.colls = editing.colls;
     p.sets = editing.sets;
-    const hasContent = p.note || DIMS.some(d => (p.tags[d]||[]).length);
+    if(p.kind === "link") p.title = (editing.title||"").trim();
+    const hasContent = p.note || (p.kind === "link" && p.title) || DIMS.some(d => (p.tags[d]||[]).length);
     if(hasContent) p.dev = true;
     await putPhoto(p);
   }
@@ -1418,12 +1545,12 @@ async function exportZip(){
     const list = photos.slice().sort((a,b) => a.createdAt - b.createdAt);
     const enc = new TextEncoder();
     const entries = [], rows = [], cards = [];
-    rows.push(["文件名","收入日期","被什么打动",...DIMS,"作者","身份","平台","链接","地点","文件夹","灵感集"]);
+    rows.push(["文件名","收入日期","标题","被什么打动",...DIMS,"作者","身份","平台","链接","地点","文件夹","灵感集"]);
     let i = 0;
     for(const p of list){
       i++;
       const num = String(i).padStart(3, "0");
-      const slug = cleanName(p.note);
+      const slug = cleanName(p.note || p.title);
       const fname = `images/${num}${slug ? "-" + slug : ""}.jpg`;
       entries.push({name: fname, data: new Uint8Array(await p.blob.arrayBuffer())});
       const o = p.origin || {};
@@ -1431,11 +1558,12 @@ async function exportZip(){
       const collNames = (p.colls||[]).map(id => (colls.find(c => c.id === id)||{}).name).filter(Boolean);
       const setNames = (p.sets||[]).filter(id => sets.find(s => s.id === id)).map(id => setPath(id));
       const date = new Date(p.createdAt).toLocaleDateString("zh-CN");
-      rows.push([fname, date, p.note||"", ...DIMS.map(d => (eff[d]||[]).join(" ")),
+      rows.push([fname, date, p.title||"", p.note||"", ...DIMS.map(d => (eff[d]||[]).join(" ")),
         o.author||"", o.role||"", o.platform||"", o.link||"", p.place||"", setNames.join(" "), collNames.join(" ")]);
       const tagLine = DIMS.flatMap(d => eff[d]||[]).map(esc).join(" · ");
       const srcLine = [o.author, o.platform].filter(Boolean).map(esc).join(" · ");
       cards.push(`<figure><img src="${fname}" loading="lazy"><figcaption>
+        ${p.title ? `<p class="n" style="color:#C9A96B">${esc(p.title)}</p>` : ""}
         ${p.note ? `<p class="n">${esc(p.note)}</p>` : ""}
         ${tagLine ? `<p class="t">${tagLine}</p>` : ""}
         <p class="m">${[srcLine, esc(p.place||""), date].filter(Boolean).join(" · ")}</p>
