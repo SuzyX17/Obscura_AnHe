@@ -61,12 +61,17 @@ header{position:sticky;top:0;z-index:20;background:rgba(23,22,26,.9);backdrop-fi
 
 /* ---------- grid ---------- */
 main{padding:12px 12px calc(96px + var(--safe-b))}
-.set-bar{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 12px;scrollbar-width:none}
-.set-bar::-webkit-scrollbar{display:none}
-.set-bar:empty{display:none}
-.f-chip{white-space:nowrap;display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:17px;border:1px solid var(--line);font-size:13.5px;color:var(--ink-dim);background:var(--surface)}
-.f-chip em{font-style:normal;font-size:11px;color:var(--ink-faint)}
-.f-chip.add{border-style:dashed;color:var(--ink-faint)}
+.home-tools{display:flex;align-items:center;gap:10px;padding:2px 2px 12px}
+.home-tools:empty{display:none}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.seg button{padding:5px 11px;color:var(--ink-dim);font-size:13px;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:none}
+.seg button.on{color:var(--brass);background:var(--brass-dim)}
+.home-tools .mk{margin-left:auto;white-space:nowrap;color:var(--ink-dim);font-size:13px;border:1px dashed var(--line);border-radius:9px;padding:5px 12px}
+.card.is-folder .folder-cap{position:absolute;left:0;right:0;bottom:0;padding:22px 10px 8px;background:linear-gradient(to top,rgba(23,22,26,.94),rgba(23,22,26,0));display:flex;justify-content:space-between;align-items:flex-end;gap:8px;pointer-events:none}
+.card.is-folder .folder-cap b{font-weight:600;font-size:13px}
+.card.is-folder .folder-cap em{font-style:normal;font-size:11.5px;color:var(--ink-dim)}
+.card.is-folder .folder-empty{aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;background:var(--surface2);color:var(--ink-faint);font-size:34px}
 .grid{column-count:2;column-gap:10px}
 .card{position:relative;break-inside:avoid;margin-bottom:10px;background:var(--surface);border-radius:var(--radius);overflow:hidden;border:1px solid var(--line)}
 .card img{width:100%;display:block;background:var(--surface2)}
@@ -202,7 +207,7 @@ main{padding:12px 12px calc(96px + var(--safe-b))}
 
 <header>
   <div class="head-row">
-    <div class="wordmark">暗 盒<small>OBSCURA · v0.17</small></div>
+    <div class="wordmark">暗 盒<small>OBSCURA · v0.18</small></div>
     <div class="head-actions">
       <button class="icon-btn" id="btnUndev" onclick="toggleUndev()">待显影 <span id="undevCount"></span></button>
       <button class="icon-btn" onclick="openCollections()">灵感集</button>
@@ -222,7 +227,7 @@ main{padding:12px 12px calc(96px + var(--safe-b))}
   <span style="display:flex;gap:14px"><button id="ctxEdit" style="display:none" onclick="editContextSet()">编辑</button><button onclick="exitContext()">返回全部 ×</button></span>
 </div>
 
-<main><div class="set-bar" id="setBar"></div><div class="grid" id="grid"></div><div id="emptyBox"></div></main>
+<main><div class="home-tools" id="setBar"></div><div class="grid" id="grid"></div><div id="emptyBox"></div></main>
 
 <button class="fab-link" onclick="openLinkSheet()" aria-label="收入链接">🔗</button>
 <button class="fab" onclick="pickFiles()" aria-label="添加图片">＋</button>
@@ -240,7 +245,7 @@ main{padding:12px 12px calc(96px + var(--safe-b))}
 
 <!-- 详情 / 显影 sheet -->
 <div class="sheet" id="detailSheet">
-  <div class="sheet-head"><b id="detailTitle">显影</b><button class="sheet-done" onclick="saveDetail(true)">完成</button></div>
+  <div class="sheet-head"><b id="detailTitle">显影</b><span><button class="sheet-close" style="color:var(--danger)" onclick="removeCurrent()">删除</button><button class="sheet-done" onclick="saveDetail(true)">完成</button></span></div>
   <div class="sheet-body" id="detailBody"></div>
 </div>
 
@@ -575,15 +580,19 @@ let authorFilter = null;
 let undevOnly = false;
 let contextColl = null;      // 灵感集视角
 let contextSet = null;       // 文件夹视角
+let viewCols = Math.min(3, Math.max(1, +localStorage.getItem("anhe_cols") || 2));   // 视图大小:列数 1/2/3
+function setCols(n){ viewCols = n; localStorage.setItem("anhe_cols", n); applyCols(); renderSetBar(); }
+function applyCols(){ const g = document.getElementById("grid"); if(g) g.style.columnCount = viewCols; }
 
 function visiblePhotos(){
   const q = document.getElementById("searchInput").value.trim().toLowerCase();
-  const ctxSetIds = contextSet ? new Set(setDescendants(contextSet)) : null;
   const needEff = q || Object.keys(filters).length;
-  // 无任何筛选的根视图 = 浏览态:只展示未入文件夹的散图,文件夹内容从文件夹栏进入
-  const browsing = !q && !Object.keys(filters).length && !undevOnly && !authorFilter && !contextSet && !contextColl;
+  const active = q || Object.keys(filters).length || undevOnly || authorFilter;
+  // 浏览态(无搜索/筛选):文件夹只看直属成员(子文件夹以卡片呈现);搜索时穿透整棵子树
+  const ctxSetIds = contextSet ? new Set(active ? setDescendants(contextSet) : [contextSet]) : null;
+  const browsingRoot = !active && !contextSet && !contextColl;
   return photos.filter(p => {
-    if(browsing && (p.sets||[]).length) return false;
+    if(browsingRoot && (p.sets||[]).length) return false;
     if(contextColl && !(p.colls||[]).includes(contextColl)) return false;
     if(ctxSetIds && !(p.sets||[]).some(id => ctxSetIds.has(id))) return false;
     if(authorFilter && p.origin?.author !== authorFilter && p.origin?.platform !== authorFilter) return false;
@@ -611,18 +620,32 @@ function originCardLine(p){
     return `<a class="card-src" href="${esc(o.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">原网页 ↗</a>`;
   return "";
 }
-/* ---- 主面板文件夹栏:当前层级的文件夹 chips,点入浏览,＋ 内联新建 ---- */
+/* ---- 主面板工具栏:视图大小 + 新建文件夹(文件夹本身以卡片呈现在网格里) ---- */
 function renderSetBar(){
   const bar = document.getElementById("setBar");
-  const kids = sets.filter(s => (s.parent||null) === (contextSet||null));
-  const chips = [];
+  if(!photos.length && !sets.length){ bar.innerHTML = ""; return; }
+  const seg = [1,2,3].map(n => `<button class="${viewCols===n?"on":""}" onclick="setCols(${n})">${["大","中","小"][n-1]}</button>`).join("");
+  bar.innerHTML = `<span class="seg">${seg}</span><button class="mk" onclick="addSetInput(this)">＋ 文件夹</button>`;
+}
+// 文件夹卡片:封面取该文件夹(含子孙)里最新收入的一张
+function setCover(id){
+  const ids = new Set(setDescendants(id));
+  return photos.find(p => (p.sets||[]).some(x => ids.has(x))) || null;   // photos 已按 createdAt 倒序
+}
+function folderCardsHTML(){
+  const cards = [];
   if(contextSet){
     const cur = sets.find(s => s.id === contextSet);
-    chips.push(`<button class="f-chip" onclick="enterSet('${cur && cur.parent ? cur.parent : ""}')">‹</button>`);
+    cards.push(`<div class="card is-folder" onclick="enterSet('${cur && cur.parent ? cur.parent : ""}')"><div class="folder-empty">‹</div><div class="folder-cap"><b>返回上级</b></div></div>`);
   }
-  chips.push(...kids.map(s => `<button class="f-chip" onclick="enterSet('${s.id}')">${esc(s.name)}<em>${setCountDeep(s.id)}</em></button>`));
-  if(photos.length || sets.length) chips.push(`<button class="f-chip add" onclick="addSetInput(this)">＋</button>`);
-  bar.innerHTML = chips.join("");
+  const kids = sets.filter(s => (s.parent||null) === (contextSet||null))
+    .sort((a,b) => (a.createdAt||0) - (b.createdAt||0));
+  for(const s of kids){
+    const cov = setCover(s.id);
+    const media = cov ? `<img src="${urlOf(cov)}" loading="lazy" alt="">` : `<div class="folder-empty">▸</div>`;
+    cards.push(`<div class="card is-folder" onclick="enterSet('${s.id}')">${media}<div class="folder-cap"><b>${esc(s.name)}</b><em>${setCountDeep(s.id)}</em></div></div>`);
+  }
+  return cards.join("");
 }
 function enterSet(id){
   contextSet = id || null;
@@ -645,7 +668,7 @@ function addSetInput(btn){
       const s = { id: crypto.randomUUID(), name, parent: contextSet || null, createdAt: Date.now() };
       sets.push(s); await putSet(s);
     }
-    renderSetBar();
+    renderGrid();
   };
   inp.onkeydown = e => { if(e.key === "Enter"){ e.preventDefault(); commit(); } };
   inp.onblur = commit;
@@ -669,7 +692,9 @@ function renderGrid(){
   renderSetBar();
   const list = visiblePhotos();
   const grid = document.getElementById("grid");
-  grid.innerHTML = list.map(p => {
+  const active = document.getElementById("searchInput").value.trim() || Object.keys(filters).length || undevOnly || authorFilter;
+  const folderHTML = active ? "" : folderCardsHTML();
+  grid.innerHTML = folderHTML + list.map(p => {
     const eff = effTags(p);
     const prime = (eff["吸引点"]||[]).map(t => ({d:"吸引点", t}));
     const rest  = DIMS.filter(d => d !== "吸引点").flatMap(d => (eff[d]||[]).map(t => ({d,t})));
@@ -686,14 +711,14 @@ function renderGrid(){
         ${p.dev ? "" : `<span class="badge-undev">待显影</span>`}
       </div></div>`;
   }).join("");
+  applyCols();
   const empty = document.getElementById("emptyBox");
-  if(!photos.length){
+  if(!photos.length && !sets.length){
     empty.innerHTML = `<div class="empty"><div class="mark">暗 盒</div>
       <p>收藏夹里的灵感散落各处。<br>把打动你的画面放进来,<br>写一句它为什么打动你。</p>
       <button onclick="pickFiles()">收入第一张</button></div>`;
-  } else if(!list.length){
-    const hasQuery = document.getElementById("searchInput").value.trim() || Object.keys(filters).length || undevOnly || authorFilter;
-    empty.innerHTML = hasQuery ? `<div class="empty"><p>没有符合当前筛选的图。<br>换个组合,或清空筛选。</p></div>` : "";
+  } else if(!list.length && !folderHTML){
+    empty.innerHTML = active ? `<div class="empty"><p>没有符合当前筛选的图。<br>换个组合,或清空筛选。</p></div>` : "";
   } else empty.innerHTML = "";
   renderActiveChips();
 }
@@ -929,8 +954,7 @@ function renderDetailBody(p, review){
     ${review ? `<div class="review-nav">
         <button onclick="skipReview()">先跳过</button>
         <button class="primary" onclick="saveDetail(false)">保存,下一张</button></div>` : ""}
-    <div class="detail-meta"><span>收入于 ${new Date(p.createdAt).toLocaleDateString("zh-CN")}</span>
-      <button onclick="removePhoto('${p.id}')">删除这张</button></div>`;
+    <div class="detail-meta"><span>收入于 ${new Date(p.createdAt).toLocaleDateString("zh-CN")}</span></div>`;
   document.getElementById("noteInput").oninput = e => editing.note = e.target.value;
   document.getElementById("placeInput").oninput = e => editing.place = e.target.value;
   const ti = document.getElementById("titleInput"); if(ti) ti.oninput = e => editing.title = e.target.value;
@@ -1069,20 +1093,25 @@ document.getElementById("coverInput").onchange = async e => {
   if(!f) return;
   try{
     const blob = await compress(f, 1600);
-    if(coverTarget === "draft"){
-      linkDraft.coverBlob = blob;
-      document.getElementById("coverPick").innerHTML = `<img src="${URL.createObjectURL(blob)}" alt="">`;
-    }else{
-      const p = photos.find(x => x.id === coverTarget); if(!p) return;
-      if(urlCache.has(p.id)){ URL.revokeObjectURL(urlCache.get(p.id)); urlCache.delete(p.id); }
-      delete p.orig; p.blob = blob;
-      await putPhoto(p);
-      renderGrid();
-      if(editing && editing.id === p.id) renderDetailBody(p, false);
-      toast("封面已更换");
-    }
+    const target = coverTarget;
+    const back = target === "draft" ? "linkSheet" : "detailSheet";
+    openCoverCrop(blob, cropped => applyCoverBlob(target, cropped), back);   // 先裁剪,再落地
   }catch(err){ toast("这张图没能读入:" + (err.message||err)); }
 };
+async function applyCoverBlob(target, blob){
+  if(target === "draft"){
+    linkDraft.coverBlob = blob;
+    document.getElementById("coverPick").innerHTML = `<img src="${URL.createObjectURL(blob)}" alt="">`;
+  }else{
+    const p = photos.find(x => x.id === target); if(!p) return;
+    if(urlCache.has(p.id)){ URL.revokeObjectURL(urlCache.get(p.id)); urlCache.delete(p.id); }
+    delete p.orig; p.blob = blob;
+    await putPhoto(p);
+    renderGrid();
+    if(editing && editing.id === p.id) renderDetailBody(p, false);
+    toast("封面已更换");
+  }
+}
 // 没有封面截图时,画一张占位封面(平台名 + 跳转提示),使卡片不空
 function makeLinkCover(platform){
   const W = 1000, H = 750, cv = document.createElement("canvas");
@@ -1242,6 +1271,7 @@ function advanceOrClose(forceClose){
     reviewIdx++; openDetail(reviewQueue[reviewIdx], true);
   } else { reviewQueue = null; closeAllSheets(); }
 }
+function removeCurrent(){ if(editing) removePhoto(editing.id); }
 async function removePhoto(id){
   if(!await appConfirm("删除这张图?不可恢复。")) return;
   await delPhoto(id);
@@ -1663,6 +1693,21 @@ function openCrop(){
   img.src = url;
   showSheet("cropSheet");
 }
+// 通用裁剪:对任意 blob 裁剪,完成回调 onDone(croppedBlob);back = 完成/取消后返回的 sheet
+function openCoverCrop(blob, onDone, back){
+  const url = URL.createObjectURL(blob);
+  const img = document.getElementById("cropImg");
+  img.onload = () => requestAnimationFrame(() => {
+    const r = img.getBoundingClientRect();
+    cropState = { url, onApply: onDone, back,
+      natW: img.naturalWidth, natH: img.naturalHeight,
+      dispW: r.width, dispH: r.height,
+      rect: { x: 0, y: 0, w: r.width, h: r.height } };
+    layoutCropRect();
+  });
+  img.src = url;
+  showSheet("cropSheet");
+}
 function layoutCropRect(){
   const el = document.getElementById("cropRect"), r = cropState.rect;
   el.style.left = r.x+"px"; el.style.top = r.y+"px";
@@ -1698,7 +1743,6 @@ function layoutCropRect(){
 })();
 async function applyCrop(){
   const s = cropState; if(!s) return;
-  const p = photos.find(x => x.id === s.pid); if(!p) return;
   const img = document.getElementById("cropImg");
   const k = s.natW / s.dispW;
   const sx = s.rect.x*k, sy = s.rect.y*k, sw = Math.max(1, s.rect.w*k), sh = Math.max(1, s.rect.h*k);
@@ -1707,6 +1751,14 @@ async function applyCrop(){
   cv.getContext("2d").drawImage(img, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
   const blob = await new Promise(r => cv.toBlob(r, "image/jpeg", .88));
   if(!blob) return toast("裁剪失败");
+  if(s.onApply){                       // 通用/封面裁剪模式
+    const cb = s.onApply, back = s.back;
+    endCrop();
+    await cb(blob);
+    if(back) showSheet(back);
+    return;
+  }
+  const p = photos.find(x => x.id === s.pid); if(!p) return;
   if(!p.orig) p.orig = p.blob;
   p.blob = blob;
   await putPhoto(p);
@@ -1724,7 +1776,7 @@ function restoreOrig(){
   renderGrid();
   returnToDetail();
 }
-function cancelCrop(){ endCrop(); returnToDetail(); }
+function cancelCrop(){ const back = cropState && cropState.back; endCrop(); if(back) showSheet(back); else returnToDetail(); }
 function endCrop(){
   if(cropState){ URL.revokeObjectURL(cropState.url); cropState = null; }
   document.getElementById("cropImg").removeAttribute("src");
